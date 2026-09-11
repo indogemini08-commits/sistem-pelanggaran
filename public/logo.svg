@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="primaryGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1d4ed8" />
+      <stop offset="100%" stop-color="#0f243f" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fde047" />
+      <stop offset="100%" stop-color="#ca8a04" />
+    </linearGradient>
+  </defs>
+  <!-- Background Circle / Shield Base -->
+  <rect x="5" y="5" width="90" height="90" rx="24" fill="url(#primaryGrad)" />
+  <rect x="7" y="7" width="86" height="86" rx="22" stroke="url(#goldGrad)" stroke-width="2" stroke-opacity="0.4" />
+  
+  <!-- Quran Book Open Shape -->
+  <path d="M50 42 C45 36 32 36 24 38 C23 38.2 22 39.2 22 40.5 L22 68 C30 66 42 66 50 71 C58 66 70 66 78 68 L78 40.5 C78 39.2 77 38.2 76 38 C68 36 55 36 50 42 Z" fill="#ffffff" />
+  <path d="M50 42 L50 71" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round" />
+  
+  <!-- Quran Spine Accent -->
+  <path d="M26 44 C34 42 44 43 49 46 L49 68 C44 65 34 64 26 66 Z" fill="#f8fafc" />
+  <path d="M74 44 C66 42 56 43 51 46 L51 68 C56 65 66 64 74 66 Z" fill="#f1f5f9" />
+
+  <!-- Crescent and Star on Top -->
+  <path d="M50 20 C46.5 20 43.5 22.2 42.5 25.5 C44.5 24.5 47 24.8 48.5 26.5 C50 28 50.3 30.5 49.3 32.5 C52.5 31.5 54.5 28.5 54.5 25 C54.5 22.2 52.5 20 50 20 Z" fill="url(#goldGrad)" />
+  <circle cx="53" cy="23" r="1.5" fill="#fef08a" />
+</svg>
