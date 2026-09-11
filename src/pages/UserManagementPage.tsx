@@ -167,7 +167,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
       case 'admin':
         return (
           <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
-            Mudir (Admin)
+            Admin
           </span>
         );
       case 'coordinator':
@@ -421,7 +421,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
                         <option value="guru">Guru (Input Kedisiplinan / Kelas)</option>
                         <option value="coordinator">Koordinator Tahfizh</option>
                         <option value="kepala_kesantrian">Kepala Kesantrian</option>
-                        <option value="admin">Mudir / Administrator</option>
+                        <option value="admin">Admin</option>
                       </select>
                     </div>
 

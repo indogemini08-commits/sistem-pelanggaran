@@ -53,7 +53,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, settings }) => {
   // Quick Demo Accounts List
   const demoAccounts: DemoAccount[] = [
     {
-      roleName: 'Mudir (Admin)',
+      roleName: 'Admin',
       badge: 'Admin Utama',
       badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
       name: 'Ustadz Fakhrur Rodhi, S.H',

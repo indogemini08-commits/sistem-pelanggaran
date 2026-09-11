@@ -600,7 +600,7 @@ function seedDatabase() {
     );
   }
   const users = [
-    { id: "usr_admin", name: "Ustadz Farhan, M.Pd (Mudir)", email: "admin@pesantren.id", pass: "admin123", role: "admin" },
+    { id: "usr_admin", name: "Ustadz Farhan, M.Pd (Admin)", email: "admin@pesantren.id", pass: "admin123", role: "admin" },
     { id: "usr_koor", name: "Ustadz Ridwan, Lc (Koordinator)", email: "koordinator@pesantren.id", pass: "koor123", role: "coordinator" },
     { id: "usr_ahmad", name: "Ustadz Ahmad Al-Hafizh", email: "ahmad@pesantren.id", pass: "ahmad123", role: "teacher" },
     { id: "usr_muhammad", name: "Ustadz Muhammad Al-Hafizh", email: "muhammad@pesantren.id", pass: "muhammad123", role: "teacher" },

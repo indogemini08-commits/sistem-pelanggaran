@@ -91,7 +91,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       case 'admin':
         return (
           <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-            Mudir / Admin
+            Admin
           </span>
         );
       case 'coordinator':
