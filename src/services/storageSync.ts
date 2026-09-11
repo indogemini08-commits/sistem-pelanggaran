@@ -38,6 +38,12 @@ function safeSetItem(key: string, value: any) {
 }
 
 export const storageSync = {
+  notifyDataChange(detail?: { action: string; resource: string; id?: string }) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('app:data-changed', { detail }));
+    }
+  },
+
   // === STUDENTS ===
   getDeletedStudentIds(): Set<string> {
     const arr = safeGetItem<string[]>(KEYS.DELETED_STUDENTS, []);
@@ -52,6 +58,8 @@ export const storageSync = {
     // Remove from created list if it was locally created
     const created = this.getCreatedStudents().filter((s) => s.id !== id);
     safeSetItem(KEYS.CREATED_STUDENTS, created);
+
+    this.notifyDataChange({ action: 'delete', resource: 'student', id });
   },
 
   getCreatedStudents(): Student[] {
@@ -69,6 +77,8 @@ export const storageSync = {
       delSet.delete(student.id);
       safeSetItem(KEYS.DELETED_STUDENTS, Array.from(delSet));
     }
+
+    this.notifyDataChange({ action: 'create', resource: 'student', id: student.id });
   },
 
   saveCreatedStudentsBulk(students: Student[]) {
@@ -76,6 +86,7 @@ export const storageSync = {
     const existingIds = new Set(existing.map((s) => s.id));
     const toAdd = students.filter((s) => !existingIds.has(s.id));
     safeSetItem(KEYS.CREATED_STUDENTS, [...toAdd, ...existing]);
+    this.notifyDataChange({ action: 'bulk_create', resource: 'student' });
   },
 
   getUpdatedStudents(): Record<string, Partial<Student>> {
@@ -86,6 +97,7 @@ export const storageSync = {
     const map = this.getUpdatedStudents();
     map[id] = { ...(map[id] || {}), ...updates };
     safeSetItem(KEYS.UPDATED_STUDENTS, map);
+    this.notifyDataChange({ action: 'update', resource: 'student', id });
   },
 
   // === VIOLATION RECORDS ===
@@ -101,6 +113,7 @@ export const storageSync = {
 
     const created = this.getCreatedRecords().filter((r) => r.id !== id);
     safeSetItem(KEYS.CREATED_RECORDS, created);
+    this.notifyDataChange({ action: 'delete', resource: 'record', id });
   },
 
   getCancelledRecords(): Record<string, string> {
@@ -111,6 +124,7 @@ export const storageSync = {
     const map = this.getCancelledRecords();
     map[id] = reason;
     safeSetItem(KEYS.CANCELLED_RECORDS, map);
+    this.notifyDataChange({ action: 'cancel', resource: 'record', id });
   },
 
   getCreatedRecords(): ViolationRecord[] {
@@ -127,6 +141,7 @@ export const storageSync = {
       delSet.delete(record.id);
       safeSetItem(KEYS.DELETED_RECORDS, Array.from(delSet));
     }
+    this.notifyDataChange({ action: 'create', resource: 'record', id: record.id });
   },
 
   // === POSITIVE RECORDS ===
@@ -142,6 +157,7 @@ export const storageSync = {
 
     const created = this.getCreatedPosRecords().filter((r) => r.id !== id);
     safeSetItem(KEYS.CREATED_POS_RECORDS, created);
+    this.notifyDataChange({ action: 'delete', resource: 'positive_record', id });
   },
 
   getCancelledPosRecords(): Record<string, string> {
@@ -152,6 +168,7 @@ export const storageSync = {
     const map = this.getCancelledPosRecords();
     map[id] = reason;
     safeSetItem(KEYS.CANCELLED_POS_RECORDS, map);
+    this.notifyDataChange({ action: 'cancel', resource: 'positive_record', id });
   },
 
   getCreatedPosRecords(): PositiveRecord[] {
@@ -168,11 +185,13 @@ export const storageSync = {
       delSet.delete(record.id);
       safeSetItem(KEYS.DELETED_POS_RECORDS, Array.from(delSet));
     }
+    this.notifyDataChange({ action: 'create', resource: 'positive_record', id: record.id });
   },
 
   // === RESET TO FACTORY DEMO ===
   resetToDemo() {
     if (typeof window === 'undefined' || !window.localStorage) return;
     Object.values(KEYS).forEach((k) => window.localStorage.removeItem(k));
+    this.notifyDataChange({ action: 'reset', resource: 'all' });
   },
 };

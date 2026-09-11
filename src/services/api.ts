@@ -127,7 +127,29 @@ export const api = {
         method: 'DELETE',
         body: JSON.stringify({ actorName }),
       }),
-    getStudents: (id: string) => fetchJson<Student[]>(`${API_BASE}/halaqah/${id}/students`),
+    getStudents: async (id: string): Promise<Student[]> => {
+      let serverStudents: Student[] = [];
+      try {
+        serverStudents = await fetchJson<Student[]>(`${API_BASE}/halaqah/${id}/students`);
+      } catch (e) {
+        console.warn('Failed to fetch halaqah students:', e);
+      }
+      const deletedStudentIds = storageSync.getDeletedStudentIds();
+      const createdStudents = storageSync.getCreatedStudents().filter((s) => s.halaqah_id === id && !deletedStudentIds.has(s.id));
+
+      const existingIds = new Set(serverStudents.map((s) => s.id));
+      const combined = [...serverStudents];
+      for (const s of createdStudents) {
+        if (!existingIds.has(s.id)) {
+          combined.push(s);
+          existingIds.add(s.id);
+        }
+      }
+
+      return combined.filter(
+        (s) => !deletedStudentIds.has(s.id) && !deletedStudentIds.has(s.student_number)
+      );
+    },
   },
 
   // Students (With reload-proof persistent client cache)
@@ -480,8 +502,69 @@ export const api = {
       }
     },
 
-    stats: (division?: string) =>
-      fetchJson<DashboardStats>(`${API_BASE}/records/stats${division && division !== 'all' ? '?division=' + encodeURIComponent(division) : ''}`),
+    stats: async (division?: string): Promise<DashboardStats> => {
+      const qs = division && division !== 'all' ? '?division=' + encodeURIComponent(division) : '';
+      let serverStats: DashboardStats;
+      try {
+        serverStats = await fetchJson<DashboardStats>(`${API_BASE}/records/stats${qs}`);
+      } catch (err) {
+        console.warn('Backend stats fetch failed, falling back to empty stats:', err);
+        serverStats = {
+          summary: {
+            totalStudents: 0,
+            totalTeachers: 0,
+            totalHalaqah: 0,
+            totalRecords: 0,
+            totalPoints: 0,
+            todayCount: 0,
+            monthCount: 0,
+            tahfizhRecordsCount: 0,
+            tahfizhTotalPoints: 0,
+            kesantrianRecordsCount: 0,
+            kesantrianTotalPoints: 0,
+            totalPositiveRecords: 0,
+            totalPointsDeducted: 0,
+            tahfizhDeductedPoints: 0,
+            kesantrianDeductedPoints: 0,
+            netTotalPoints: 0,
+          },
+          topStudents: [],
+          byCategory: [],
+          pointsByHalaqah: [],
+          monthlyTrend: [],
+          studentsNeedingAttention: [],
+        };
+      }
+
+      const deletedStudentIds = storageSync.getDeletedStudentIds();
+      const createdStudents = storageSync.getCreatedStudents().filter((s) => !deletedStudentIds.has(s.id));
+
+      // Filter out deleted students from topStudents and studentsNeedingAttention
+      const filteredTopStudents = (serverStats.topStudents || []).filter(
+        (s) => !deletedStudentIds.has(s.id) && !deletedStudentIds.has(s.student_number)
+      );
+
+      const filteredNeedingAttention = (serverStats.studentsNeedingAttention || []).filter(
+        (s) => !deletedStudentIds.has(s.id) && !deletedStudentIds.has(s.student_number)
+      );
+
+      // Adjust total students
+      let adjustedTotalStudents = serverStats.summary.totalStudents;
+      if (deletedStudentIds.size > 0) {
+        adjustedTotalStudents = Math.max(0, adjustedTotalStudents - deletedStudentIds.size);
+      }
+      adjustedTotalStudents += createdStudents.length;
+
+      return {
+        ...serverStats,
+        summary: {
+          ...serverStats.summary,
+          totalStudents: adjustedTotalStudents,
+        },
+        topStudents: filteredTopStudents,
+        studentsNeedingAttention: filteredNeedingAttention,
+      };
+    },
   },
 
   // Positive Actions (Master Kebaikan / Prestasi)

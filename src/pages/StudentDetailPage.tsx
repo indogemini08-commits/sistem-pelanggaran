@@ -54,7 +54,8 @@ export const StudentDetailPage: React.FC<StudentDetailPageProps> = ({
       setPositiveRecords(data.positive_records || []);
       setHistory(data.history);
     } catch (err: any) {
-      alert('Gagal memuat profil santri: ' + err.message);
+      console.warn('Profil santri tidak ditemukan atau telah dihapus:', err.message);
+      setStudent(null);
     } finally {
       setLoading(false);
     }
@@ -101,13 +102,20 @@ export const StudentDetailPage: React.FC<StudentDetailPageProps> = ({
 
   if (!student) {
     return (
-      <div className="text-center py-12 space-y-3">
-        <p className="text-slate-500">Data santri tidak ditemukan.</p>
+      <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-soft text-center space-y-4 max-w-md mx-auto my-12 animate-scale-in">
+        <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto ring-8 ring-rose-50/50">
+          <AlertTriangle className="w-7 h-7" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-900">Data Santri Tidak Ditemukan</h2>
+        <p className="text-xs text-slate-500 leading-relaxed">
+          Santri ini mungkin telah dihapus dari sistem atau sudah tidak aktif lagi.
+        </p>
         <button
           onClick={onBack}
-          className="px-4 py-2 bg-brand-600 text-white text-xs font-bold rounded-xl"
+          className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-md transition-all inline-flex items-center gap-2"
         >
-          Kembali
+          <ArrowLeft className="w-4 h-4" />
+          <span>Kembali ke Halaman Sebelumnya</span>
         </button>
       </div>
     );

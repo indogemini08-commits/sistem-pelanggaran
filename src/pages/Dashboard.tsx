@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { User, DashboardStats, Halaqah, Student } from '../types';
 import { api } from '../services/api';
+import { storageSync } from '../services/storageSync';
 import { StatusBadge } from '../components/Badge';
 
 interface DashboardProps {
@@ -48,7 +49,35 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   useEffect(() => {
     loadDashboardData();
-  }, [currentUser, dashboardDivision]);
+
+    // Auto-refetch when data changes (e.g. deleted/created student, record, etc.)
+    const handleDataChanged = () => {
+      api.records.stats(dashboardDivision).then((s) => {
+        setStats(s);
+      }).catch(console.error);
+
+      if (isTeacher) {
+        api.halaqah.list().then(async (allHalaqahs) => {
+          const myHalaqahs = allHalaqahs.filter(
+            (h) => h.teacher_id === currentUser?.teacherId || h.teacher_name?.includes(currentUser?.name || '---')
+          );
+          const targetHalaqah = myHalaqahs.length > 0 ? myHalaqahs[0] : allHalaqahs[0];
+          if (targetHalaqah) {
+            const sList = await api.halaqah.getStudents(targetHalaqah.id);
+            setTeacherStudents(sList);
+          }
+        }).catch(console.error);
+      }
+    };
+
+    window.addEventListener('app:data-changed', handleDataChanged);
+    window.addEventListener('storage', handleDataChanged);
+
+    return () => {
+      window.removeEventListener('app:data-changed', handleDataChanged);
+      window.removeEventListener('storage', handleDataChanged);
+    };
+  }, [currentUser, dashboardDivision, isTeacher]);
 
   const loadDashboardData = async () => {
     setLoading(true);
@@ -77,6 +106,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleStudentClick = (studentId: string) => {
+    if (storageSync.getDeletedStudentIds().has(studentId)) {
+      alert('Data santri ini sudah dihapus dari sistem.');
+      return;
+    }
+    onSelectStudent(studentId);
   };
 
   if (loading && !stats) {
@@ -177,7 +214,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {topStudentsInHalaqah.slice(0, 8).map((st) => (
                 <div
                   key={st.id}
-                  onClick={() => onSelectStudent(st.id)}
+                  onClick={() => handleStudentClick(st.id)}
                   className="py-3 flex items-center justify-between hover:bg-slate-50 px-2 rounded-xl cursor-pointer transition-colors"
                 >
                   <div className="flex items-center gap-3">
@@ -397,7 +434,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {stats?.topStudents.map((s, idx) => (
               <div
                 key={s.id}
-                onClick={() => onSelectStudent(s.id)}
+                onClick={() => handleStudentClick(s.id)}
                 className="p-3.5 hover:bg-slate-50 active:bg-slate-100 transition-colors cursor-pointer space-y-2"
               >
                 <div className="flex items-center justify-between gap-2">
@@ -452,7 +489,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 {stats?.topStudents.map((s, idx) => (
                   <tr
                     key={s.id}
-                    onClick={() => onSelectStudent(s.id)}
+                    onClick={() => handleStudentClick(s.id)}
                     className="hover:bg-slate-50/80 transition-colors cursor-pointer"
                   >
                     <td className="px-4 py-3 text-center font-bold text-slate-400">

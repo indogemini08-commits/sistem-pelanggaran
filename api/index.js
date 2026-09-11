@@ -1784,7 +1784,7 @@ router7.get("/", (req, res) => {
              t.name as current_teacher_name,
              v.category as violation_category
       FROM violation_records vr
-      LEFT JOIN students s ON s.id = vr.student_id
+      JOIN students s ON s.id = vr.student_id AND s.status = 'active'
       LEFT JOIN halaqah h ON h.id = vr.halaqah_id
       LEFT JOIN teachers t ON t.id = vr.teacher_id
       LEFT JOIN violations v ON v.id = vr.violation_id
@@ -2053,18 +2053,18 @@ router7.get("/stats", (req, res) => {
     const totalStudents = get('SELECT COUNT(*) as count FROM students WHERE status = "active"')?.count || 0;
     const totalTeachers = get('SELECT COUNT(*) as count FROM teachers WHERE status = "active"')?.count || 0;
     const totalHalaqah = get('SELECT COUNT(*) as count FROM halaqah WHERE status = "active"')?.count || 0;
-    const totalRecords = get(`SELECT COUNT(*) as count FROM violation_records vr WHERE vr.status = "active" ${divisionFilterSql}`)?.count || 0;
-    const totalPoints = get(`SELECT COALESCE(SUM(vr.points_snapshot), 0) as total FROM violation_records vr WHERE vr.status = "active" ${divisionFilterSql}`)?.total || 0;
-    const tahfizhRecordsCount = get('SELECT COUNT(*) as count FROM violation_records WHERE status = "active" AND division = "tahfizh"')?.count || 0;
-    const tahfizhTotalPoints = get('SELECT COALESCE(SUM(points_snapshot), 0) as total FROM violation_records WHERE status = "active" AND division = "tahfizh"')?.total || 0;
-    const kesantrianRecordsCount = get('SELECT COUNT(*) as count FROM violation_records WHERE status = "active" AND division = "kesantrian"')?.count || 0;
-    const kesantrianTotalPoints = get('SELECT COALESCE(SUM(points_snapshot), 0) as total FROM violation_records WHERE status = "active" AND division = "kesantrian"')?.total || 0;
-    const todayCount = get(`SELECT COUNT(*) as count FROM violation_records vr WHERE vr.date = ? AND vr.status = "active" ${divisionFilterSql}`, [today])?.count || 0;
-    const monthCount = get(`SELECT COUNT(*) as count FROM violation_records vr WHERE vr.date LIKE ? AND vr.status = "active" ${divisionFilterSql}`, [`${currentMonth}%`])?.count || 0;
-    const totalPositiveRecords = get(`SELECT COUNT(*) as count FROM positive_records pr WHERE pr.status = "active" ${hasDivisionFilter ? `AND pr.division = '${division}'` : ""}`)?.count || 0;
-    const totalPointsDeducted = get(`SELECT COALESCE(SUM(pr.points_deducted), 0) as total FROM positive_records pr WHERE pr.status = "active" ${hasDivisionFilter ? `AND pr.division = '${division}'` : ""}`)?.total || 0;
-    const tahfizhDeductedPoints = get('SELECT COALESCE(SUM(points_deducted), 0) as total FROM positive_records WHERE status = "active" AND division = "tahfizh"')?.total || 0;
-    const kesantrianDeductedPoints = get('SELECT COALESCE(SUM(points_deducted), 0) as total FROM positive_records WHERE status = "active" AND division = "kesantrian"')?.total || 0;
+    const totalRecords = get(`SELECT COUNT(*) as count FROM violation_records vr JOIN students s ON s.id = vr.student_id AND s.status = 'active' WHERE vr.status = "active" ${divisionFilterSql}`)?.count || 0;
+    const totalPoints = get(`SELECT COALESCE(SUM(vr.points_snapshot), 0) as total FROM violation_records vr JOIN students s ON s.id = vr.student_id AND s.status = 'active' WHERE vr.status = "active" ${divisionFilterSql}`)?.total || 0;
+    const tahfizhRecordsCount = get('SELECT COUNT(*) as count FROM violation_records vr JOIN students s ON s.id = vr.student_id AND s.status = "active" WHERE vr.status = "active" AND vr.division = "tahfizh"')?.count || 0;
+    const tahfizhTotalPoints = get('SELECT COALESCE(SUM(vr.points_snapshot), 0) as total FROM violation_records vr JOIN students s ON s.id = vr.student_id AND s.status = "active" WHERE vr.status = "active" AND vr.division = "tahfizh"')?.total || 0;
+    const kesantrianRecordsCount = get('SELECT COUNT(*) as count FROM violation_records vr JOIN students s ON s.id = vr.student_id AND s.status = "active" WHERE vr.status = "active" AND vr.division = "kesantrian"')?.count || 0;
+    const kesantrianTotalPoints = get('SELECT COALESCE(SUM(vr.points_snapshot), 0) as total FROM violation_records vr JOIN students s ON s.id = vr.student_id AND s.status = "active" WHERE vr.status = "active" AND vr.division = "kesantrian"')?.total || 0;
+    const todayCount = get(`SELECT COUNT(*) as count FROM violation_records vr JOIN students s ON s.id = vr.student_id AND s.status = "active" WHERE vr.date = ? AND vr.status = "active" ${divisionFilterSql}`, [today])?.count || 0;
+    const monthCount = get(`SELECT COUNT(*) as count FROM violation_records vr JOIN students s ON s.id = vr.student_id AND s.status = "active" WHERE vr.date LIKE ? AND vr.status = "active" ${divisionFilterSql}`, [`${currentMonth}%`])?.count || 0;
+    const totalPositiveRecords = get(`SELECT COUNT(*) as count FROM positive_records pr JOIN students s ON s.id = pr.student_id AND s.status = "active" WHERE pr.status = "active" ${hasDivisionFilter ? `AND pr.division = '${division}'` : ""}`)?.count || 0;
+    const totalPointsDeducted = get(`SELECT COALESCE(SUM(pr.points_deducted), 0) as total FROM positive_records pr JOIN students s ON s.id = pr.student_id AND s.status = "active" WHERE pr.status = "active" ${hasDivisionFilter ? `AND pr.division = '${division}'` : ""}`)?.total || 0;
+    const tahfizhDeductedPoints = get('SELECT COALESCE(SUM(pr.points_deducted), 0) as total FROM positive_records pr JOIN students s ON s.id = pr.student_id AND s.status = "active" WHERE pr.status = "active" AND pr.division = "tahfizh"')?.total || 0;
+    const kesantrianDeductedPoints = get('SELECT COALESCE(SUM(pr.points_deducted), 0) as total FROM positive_records pr JOIN students s ON s.id = pr.student_id AND s.status = "active" WHERE pr.status = "active" AND pr.division = "kesantrian"')?.total || 0;
     const thresholds = query("SELECT * FROM point_thresholds ORDER BY sort_order ASC");
     const topStudents = query(`
       SELECT s.id, s.name, s.student_number, s.class, h.name as halaqah_name,
@@ -2075,7 +2075,8 @@ router7.get("/stats", (req, res) => {
       FROM students s
       LEFT JOIN halaqah h ON h.id = s.halaqah_id
       JOIN violation_records vr ON vr.student_id = s.id AND vr.status = 'active'
-      ${hasDivisionFilter ? `WHERE vr.division = '${division}'` : ""}
+      WHERE s.status = 'active'
+      ${hasDivisionFilter ? `AND vr.division = '${division}'` : ""}
       GROUP BY s.id
       ORDER BY total_points DESC
       LIMIT 10
@@ -2083,6 +2084,7 @@ router7.get("/stats", (req, res) => {
     const byCategory = query(`
       SELECT v.category, v.division, COUNT(vr.id) as count, COALESCE(SUM(vr.points_snapshot), 0) as points
       FROM violation_records vr
+      JOIN students s ON s.id = vr.student_id AND s.status = 'active'
       JOIN violations v ON v.id = vr.violation_id
       WHERE vr.status = 'active' ${divisionFilterSql}
       GROUP BY v.category, v.division
@@ -2093,6 +2095,7 @@ router7.get("/stats", (req, res) => {
              COUNT(vr.id) as violation_count,
              COALESCE(SUM(vr.points_snapshot), 0) as total_points
       FROM violation_records vr
+      JOIN students s ON s.id = vr.student_id AND s.status = 'active'
       WHERE vr.status = 'active' ${divisionFilterSql}
       GROUP BY vr.halaqah_name_snapshot
       ORDER BY total_points DESC
@@ -2102,6 +2105,7 @@ router7.get("/stats", (req, res) => {
              COUNT(vr.id) as count,
              COALESCE(SUM(vr.points_snapshot), 0) as points
       FROM violation_records vr
+      JOIN students s ON s.id = vr.student_id AND s.status = 'active'
       WHERE vr.status = 'active' ${divisionFilterSql}
       GROUP BY month
       ORDER BY month ASC
@@ -2116,7 +2120,8 @@ router7.get("/stats", (req, res) => {
       FROM students s
       LEFT JOIN halaqah h ON h.id = s.halaqah_id
       JOIN violation_records vr ON vr.student_id = s.id AND vr.status = 'active'
-      ${hasDivisionFilter ? `WHERE vr.division = '${division}'` : ""}
+      WHERE s.status = 'active'
+      ${hasDivisionFilter ? `AND vr.division = '${division}'` : ""}
       GROUP BY s.id
       HAVING total_points >= ?
       ORDER BY total_points DESC
