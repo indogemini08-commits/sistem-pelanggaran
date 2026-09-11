@@ -94,7 +94,9 @@ router.delete('/:id', (req: Request, res: Response) => {
     const { actorName = 'Admin' } = req.body || {};
 
     const halaqah = get<any>('SELECT * FROM halaqah WHERE id = ?', [id]);
-    if (!halaqah) return res.status(404).json({ error: 'Halaqah tidak ditemukan' });
+    if (!halaqah) {
+      return res.json({ message: 'Halaqah sudah tidak ada atau telah dihapus' });
+    }
 
     // Detach students from this halaqah
     run('UPDATE students SET halaqah_id = NULL WHERE halaqah_id = ?', [id]);

@@ -139,7 +139,9 @@ router.delete('/:id', (req: Request, res: Response) => {
     const { actorName = 'Admin' } = req.body || {};
 
     const violation = get<any>('SELECT * FROM violations WHERE id = ?', [id]);
-    if (!violation) return res.status(404).json({ error: 'Pelanggaran tidak ditemukan' });
+    if (!violation) {
+      return res.json({ message: 'Pelanggaran sudah tidak ada atau telah dihapus' });
+    }
 
     // We do not hard delete if there are historical records, or we nullify FK because records have snapshots!
     run('UPDATE violation_records SET violation_id = NULL WHERE violation_id = ?', [id]);

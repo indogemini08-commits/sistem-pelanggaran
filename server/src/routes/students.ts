@@ -115,8 +115,8 @@ router.get('/:id', (req: Request, res: Response) => {
       FROM students s
       LEFT JOIN halaqah h ON h.id = s.halaqah_id
       LEFT JOIN teachers t ON t.id = h.teacher_id
-      WHERE s.id = ?
-    `, [id]);
+      WHERE s.id = ? OR s.student_number = ?
+    `, [id, id]);
 
     if (!student) return res.status(404).json({ error: 'Santri tidak ditemukan' });
 
@@ -315,19 +315,25 @@ router.delete('/:id', (req: Request, res: Response) => {
     const { id } = req.params;
     const { actorName = 'Admin' } = req.body || {};
 
-    const student = get<any>('SELECT * FROM students WHERE id = ?', [id]);
-    if (!student) return res.status(404).json({ error: 'Santri tidak ditemukan' });
+    const student = get<any>('SELECT * FROM students WHERE id = ? OR student_number = ?', [id, id]);
+    if (!student) {
+      // Idempotent: If student is already deleted or not found, return success so frontend stays clean
+      return res.json({ message: 'Santri sudah tidak ada atau telah dihapus' });
+    }
 
-    // Cascade delete history & records
-    run('DELETE FROM student_halaqah_history WHERE student_id = ?', [id]);
-    run('DELETE FROM violation_records WHERE student_id = ?', [id]);
-    run('DELETE FROM students WHERE id = ?', [id]);
+    const targetId = student.id;
+
+    // Cascade delete history & records safely
+    run('DELETE FROM student_halaqah_history WHERE student_id = ?', [targetId]);
+    run('DELETE FROM violation_records WHERE student_id = ?', [targetId]);
+    run('DELETE FROM positive_records WHERE student_id = ?', [targetId]);
+    run('DELETE FROM students WHERE id = ?', [targetId]);
 
     logAudit({
       userName: actorName,
       action: 'DELETE_STUDENT',
       tableName: 'students',
-      recordId: id,
+      recordId: targetId,
       oldData: student,
     });
 

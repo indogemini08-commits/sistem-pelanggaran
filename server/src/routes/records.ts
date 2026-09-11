@@ -26,12 +26,14 @@ router.get('/', (req: Request, res: Response) => {
 
     let sql = `
       SELECT vr.*,
-             s.name as student_name, s.student_number as student_nis, s.gender as student_gender,
+             COALESCE(s.name, vr.halaqah_name_snapshot) as student_name,
+             COALESCE(s.student_number, '-') as student_nis,
+             COALESCE(s.gender, 'L') as student_gender,
              h.name as current_halaqah_name,
              t.name as current_teacher_name,
              v.category as violation_category
       FROM violation_records vr
-      JOIN students s ON s.id = vr.student_id
+      LEFT JOIN students s ON s.id = vr.student_id
       LEFT JOIN halaqah h ON h.id = vr.halaqah_id
       LEFT JOIN teachers t ON t.id = vr.teacher_id
       LEFT JOIN violations v ON v.id = vr.violation_id
@@ -325,7 +327,9 @@ router.delete('/:id', (req: Request, res: Response) => {
     const { actorName = 'Admin' } = req.body || {};
 
     const record = get<any>('SELECT * FROM violation_records WHERE id = ?', [id]);
-    if (!record) return res.status(404).json({ error: 'Catatan tidak ditemukan' });
+    if (!record) {
+      return res.json({ message: 'Catatan pelanggaran sudah tidak ada atau telah dihapus' });
+    }
 
     run('DELETE FROM violation_records WHERE id = ?', [id]);
 

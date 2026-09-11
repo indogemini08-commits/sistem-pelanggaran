@@ -124,7 +124,9 @@ router.delete('/:id', (req: Request, res: Response) => {
     const { actorName = 'Admin' } = req.body || {};
 
     const user = get<any>('SELECT * FROM users WHERE id = ?', [id]);
-    if (!user) return res.status(404).json({ error: 'Pengguna tidak ditemukan' });
+    if (!user) {
+      return res.json({ message: 'Pengguna sudah tidak ada atau telah dihapus' });
+    }
 
     // Protect against deleting last admin
     if (user.role === 'admin') {

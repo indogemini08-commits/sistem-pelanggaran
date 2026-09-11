@@ -219,7 +219,9 @@ router.delete('/:id', (req: Request, res: Response) => {
     const { actorName = 'Admin' } = req.body;
 
     const record = get<any>('SELECT * FROM positive_records WHERE id = ?', [id]);
-    if (!record) return res.status(404).json({ error: 'Catatan kebaikan tidak ditemukan' });
+    if (!record) {
+      return res.json({ message: 'Catatan kebaikan sudah tidak ada atau telah dihapus' });
+    }
 
     run('DELETE FROM positive_records WHERE id = ?', [id]);
 

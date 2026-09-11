@@ -996,7 +996,9 @@ router2.delete("/:id", (req, res) => {
     const { id } = req.params;
     const { actorName = "Admin" } = req.body || {};
     const user = get("SELECT * FROM users WHERE id = ?", [id]);
-    if (!user) return res.status(404).json({ error: "Pengguna tidak ditemukan" });
+    if (!user) {
+      return res.json({ message: "Pengguna sudah tidak ada atau telah dihapus" });
+    }
     if (user.role === "admin") {
       const adminCount = query('SELECT COUNT(*) as count FROM users WHERE role = "admin"')[0]?.count || 0;
       if (adminCount <= 1) {
@@ -1106,7 +1108,9 @@ router3.delete("/:id", (req, res) => {
     const { id } = req.params;
     const { actorName = "Admin" } = req.body || {};
     const teacher = get("SELECT * FROM teachers WHERE id = ?", [id]);
-    if (!teacher) return res.status(404).json({ error: "Muhafizh tidak ditemukan" });
+    if (!teacher) {
+      return res.json({ message: "Muhafizh sudah tidak ada atau telah dihapus" });
+    }
     run("UPDATE halaqah SET teacher_id = NULL WHERE teacher_id = ?", [id]);
     run("DELETE FROM teachers WHERE id = ?", [id]);
     logAudit({
@@ -1201,7 +1205,9 @@ router4.delete("/:id", (req, res) => {
     const { id } = req.params;
     const { actorName = "Admin" } = req.body || {};
     const halaqah = get("SELECT * FROM halaqah WHERE id = ?", [id]);
-    if (!halaqah) return res.status(404).json({ error: "Halaqah tidak ditemukan" });
+    if (!halaqah) {
+      return res.json({ message: "Halaqah sudah tidak ada atau telah dihapus" });
+    }
     run("UPDATE students SET halaqah_id = NULL WHERE halaqah_id = ?", [id]);
     run("DELETE FROM halaqah WHERE id = ?", [id]);
     logAudit({
@@ -1336,8 +1342,8 @@ router5.get("/:id", (req, res) => {
       FROM students s
       LEFT JOIN halaqah h ON h.id = s.halaqah_id
       LEFT JOIN teachers t ON t.id = h.teacher_id
-      WHERE s.id = ?
-    `, [id]);
+      WHERE s.id = ? OR s.student_number = ?
+    `, [id, id]);
     if (!student) return res.status(404).json({ error: "Santri tidak ditemukan" });
     const thresholds = query("SELECT * FROM point_thresholds ORDER BY sort_order ASC");
     const records = query(`
@@ -1497,16 +1503,20 @@ router5.delete("/:id", (req, res) => {
   try {
     const { id } = req.params;
     const { actorName = "Admin" } = req.body || {};
-    const student = get("SELECT * FROM students WHERE id = ?", [id]);
-    if (!student) return res.status(404).json({ error: "Santri tidak ditemukan" });
-    run("DELETE FROM student_halaqah_history WHERE student_id = ?", [id]);
-    run("DELETE FROM violation_records WHERE student_id = ?", [id]);
-    run("DELETE FROM students WHERE id = ?", [id]);
+    const student = get("SELECT * FROM students WHERE id = ? OR student_number = ?", [id, id]);
+    if (!student) {
+      return res.json({ message: "Santri sudah tidak ada atau telah dihapus" });
+    }
+    const targetId = student.id;
+    run("DELETE FROM student_halaqah_history WHERE student_id = ?", [targetId]);
+    run("DELETE FROM violation_records WHERE student_id = ?", [targetId]);
+    run("DELETE FROM positive_records WHERE student_id = ?", [targetId]);
+    run("DELETE FROM students WHERE id = ?", [targetId]);
     logAudit({
       userName: actorName,
       action: "DELETE_STUDENT",
       tableName: "students",
-      recordId: id,
+      recordId: targetId,
       oldData: student
     });
     return res.json({ message: "Santri beserta histori berhasil dihapus" });
@@ -1724,7 +1734,9 @@ router6.delete("/:id", (req, res) => {
     const { id } = req.params;
     const { actorName = "Admin" } = req.body || {};
     const violation = get("SELECT * FROM violations WHERE id = ?", [id]);
-    if (!violation) return res.status(404).json({ error: "Pelanggaran tidak ditemukan" });
+    if (!violation) {
+      return res.json({ message: "Pelanggaran sudah tidak ada atau telah dihapus" });
+    }
     run("UPDATE violation_records SET violation_id = NULL WHERE violation_id = ?", [id]);
     run("DELETE FROM violations WHERE id = ?", [id]);
     logAudit({
@@ -1765,12 +1777,14 @@ router7.get("/", (req, res) => {
     } = req.query;
     let sql = `
       SELECT vr.*,
-             s.name as student_name, s.student_number as student_nis, s.gender as student_gender,
+             COALESCE(s.name, vr.halaqah_name_snapshot) as student_name,
+             COALESCE(s.student_number, '-') as student_nis,
+             COALESCE(s.gender, 'L') as student_gender,
              h.name as current_halaqah_name,
              t.name as current_teacher_name,
              v.category as violation_category
       FROM violation_records vr
-      JOIN students s ON s.id = vr.student_id
+      LEFT JOIN students s ON s.id = vr.student_id
       LEFT JOIN halaqah h ON h.id = vr.halaqah_id
       LEFT JOIN teachers t ON t.id = vr.teacher_id
       LEFT JOIN violations v ON v.id = vr.violation_id
@@ -2013,7 +2027,9 @@ router7.delete("/:id", (req, res) => {
     const { id } = req.params;
     const { actorName = "Admin" } = req.body || {};
     const record = get("SELECT * FROM violation_records WHERE id = ?", [id]);
-    if (!record) return res.status(404).json({ error: "Catatan tidak ditemukan" });
+    if (!record) {
+      return res.json({ message: "Catatan pelanggaran sudah tidak ada atau telah dihapus" });
+    }
     run("DELETE FROM violation_records WHERE id = ?", [id]);
     logAudit({
       userName: actorName,
@@ -2587,7 +2603,9 @@ router11.delete("/:id", (req, res) => {
     const { id } = req.params;
     const { actorName = "Admin" } = req.body;
     const record = get("SELECT * FROM positive_records WHERE id = ?", [id]);
-    if (!record) return res.status(404).json({ error: "Catatan kebaikan tidak ditemukan" });
+    if (!record) {
+      return res.json({ message: "Catatan kebaikan sudah tidak ada atau telah dihapus" });
+    }
     run("DELETE FROM positive_records WHERE id = ?", [id]);
     logAudit({
       userName: actorName,
