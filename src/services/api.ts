@@ -22,13 +22,25 @@ async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> 
   };
 
   const res = await fetch(url, { ...options, headers });
-  const data = await res.json();
+  const text = await res.text();
+  let data: any = null;
 
-  if (!res.ok) {
-    throw new Error(data.error || 'Terjadi kesalahan pada sistem.');
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      if (!res.ok) {
+        throw new Error(`Server error (${res.status}): Terjadi kendala saat menghubungi API backend.`);
+      }
+      throw new Error('Respon dari server tidak dalam format JSON yang valid.');
+    }
   }
 
-  return data as T;
+  if (!res.ok) {
+    throw new Error(data?.error || data?.message || `Terjadi kesalahan pada sistem (${res.status}).`);
+  }
+
+  return (data ?? {}) as T;
 }
 
 export const api = {

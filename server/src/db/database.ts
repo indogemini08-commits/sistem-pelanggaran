@@ -1,26 +1,50 @@
-import initSqlJs, { Database } from 'sql.js';
+import type { Database } from 'sql.js';
 import fs from 'fs';
 import path from 'path';
+import { SCHEMA_SQL } from './schema';
 
 let db: Database | null = null;
-const DATA_DIR = path.resolve(process.cwd(), 'server', 'data');
+const DATA_DIR = process.env.VERCEL
+  ? path.join('/tmp', 'data')
+  : path.resolve(process.cwd(), 'server', 'data');
 const DB_FILE = path.join(DATA_DIR, 'halaqah.db');
-const SCHEMA_FILE = path.resolve(process.cwd(), 'server', 'src', 'db', 'schema.sql');
+
+async function loadSqlJsEngine() {
+  try {
+    const mod = await import('sql.js');
+    const init = mod.default || mod;
+    return await init();
+  } catch (wasmErr) {
+    console.warn('WASM sql.js gagal dimuat, beralih ke fallback asm.js:', wasmErr);
+    try {
+      // @ts-ignore
+      const asmMod = await import('sql.js/dist/sql-asm.js');
+      const initAsm = asmMod.default || asmMod;
+      return await initAsm();
+    } catch (asmErr) {
+      console.error('Semua inisialisasi SQL.js gagal:', asmErr);
+      throw asmErr;
+    }
+  }
+}
 
 export async function getDb(): Promise<Database> {
   if (db) return db;
 
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch (e) {
+    console.warn('Gagal membuat direktori data:', e);
   }
 
-  const SQL = await initSqlJs();
+  const SQL = await loadSqlJsEngine();
 
   if (fs.existsSync(DB_FILE)) {
     try {
       const fileBuffer = fs.readFileSync(DB_FILE);
       db = new SQL.Database(fileBuffer);
-      // Run foreign_keys
       db.run('PRAGMA foreign_keys = ON;');
       runMigrations(db);
       persistDb();
@@ -33,11 +57,7 @@ export async function getDb(): Promise<Database> {
   // New database
   db = new SQL.Database();
   db.run('PRAGMA foreign_keys = ON;');
-
-  if (fs.existsSync(SCHEMA_FILE)) {
-    const schema = fs.readFileSync(SCHEMA_FILE, 'utf-8');
-    db.run(schema);
-  }
+  db.run(SCHEMA_SQL);
 
   runMigrations(db);
   persistDb();
