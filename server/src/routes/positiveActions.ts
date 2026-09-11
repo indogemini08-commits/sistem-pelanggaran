@@ -135,10 +135,10 @@ router.put('/:id', (req: Request, res: Response) => {
 router.delete('/:id', (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { actorName = 'Admin' } = req.body;
+    const { actorName = 'Admin' } = req.body || {};
 
     const oldAction = get<any>('SELECT * FROM positive_actions WHERE id = ?', [id]);
-    if (!oldAction) return res.status(404).json({ error: 'Aturan kegiatan baik tidak ditemukan' });
+    if (!oldAction) return res.json({ message: 'Aturan kegiatan baik sudah tidak ada atau telah dihapus' });
 
     // Check if used in positive_records
     const usageCount = query<{ count: number }>('SELECT COUNT(*) as count FROM positive_records WHERE action_id = ?', [id])[0]?.count || 0;

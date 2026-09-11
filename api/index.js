@@ -2394,9 +2394,9 @@ router10.put("/:id", (req, res) => {
 router10.delete("/:id", (req, res) => {
   try {
     const { id } = req.params;
-    const { actorName = "Admin" } = req.body;
+    const { actorName = "Admin" } = req.body || {};
     const oldAction = get("SELECT * FROM positive_actions WHERE id = ?", [id]);
-    if (!oldAction) return res.status(404).json({ error: "Aturan kegiatan baik tidak ditemukan" });
+    if (!oldAction) return res.json({ message: "Aturan kegiatan baik sudah tidak ada atau telah dihapus" });
     const usageCount = query("SELECT COUNT(*) as count FROM positive_records WHERE action_id = ?", [id])[0]?.count || 0;
     if (usageCount > 0) {
       run('UPDATE positive_actions SET status = "inactive" WHERE id = ?', [id]);
@@ -2601,7 +2601,7 @@ router11.put("/:id/cancel", (req, res) => {
 router11.delete("/:id", (req, res) => {
   try {
     const { id } = req.params;
-    const { actorName = "Admin" } = req.body;
+    const { actorName = "Admin" } = req.body || {};
     const record = get("SELECT * FROM positive_records WHERE id = ?", [id]);
     if (!record) {
       return res.json({ message: "Catatan kebaikan sudah tidak ada atau telah dihapus" });

@@ -216,7 +216,7 @@ router.put('/:id/cancel', (req: Request, res: Response) => {
 router.delete('/:id', (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { actorName = 'Admin' } = req.body;
+    const { actorName = 'Admin' } = req.body || {};
 
     const record = get<any>('SELECT * FROM positive_records WHERE id = ?', [id]);
     if (!record) {
