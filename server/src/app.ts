@@ -48,6 +48,15 @@ app.use(async (req, res, next) => {
   }
 });
 
+// URL Path Normalization for Vercel Serverless Rewrites
+app.use((req, res, next) => {
+  const matchedPath = (req.headers['x-matched-path'] || req.headers['x-vercel-matched-path'] || req.headers['x-forwarded-uri']) as string;
+  if (matchedPath && (req.url === '/api/index.js' || req.url === '/api/index' || req.url === '/api' || req.url === '/')) {
+    req.url = matchedPath;
+  }
+  next();
+});
+
 // Core API Router
 const apiRouter = express.Router();
 

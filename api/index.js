@@ -2628,6 +2628,13 @@ app.use(async (req, res, next) => {
     res.status(500).json({ error: "Gagal menginisialisasi database: " + (err?.message || err) });
   }
 });
+app.use((req, res, next) => {
+  const matchedPath = req.headers["x-matched-path"] || req.headers["x-vercel-matched-path"] || req.headers["x-forwarded-uri"];
+  if (matchedPath && (req.url === "/api/index.js" || req.url === "/api/index" || req.url === "/api" || req.url === "/")) {
+    req.url = matchedPath;
+  }
+  next();
+});
 var apiRouter = express.Router();
 apiRouter.use("/auth", auth_default);
 apiRouter.use("/users", users_default);
