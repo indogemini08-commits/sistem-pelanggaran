@@ -127,129 +127,20 @@ export const api = {
         method: 'DELETE',
         body: JSON.stringify({ actorName }),
       }),
-    getStudents: async (id: string): Promise<Student[]> => {
-      let serverStudents: Student[] = [];
-      try {
-        serverStudents = await fetchJson<Student[]>(`${API_BASE}/halaqah/${id}/students`);
-      } catch (e) {
-        console.warn('Failed to fetch halaqah students:', e);
-      }
-      const deletedStudentIds = storageSync.getDeletedStudentIds();
-      const createdStudents = storageSync.getCreatedStudents().filter((s) => s.halaqah_id === id && !deletedStudentIds.has(s.id));
-
-      const existingIds = new Set(serverStudents.map((s) => s.id));
-      const combined = [...serverStudents];
-      for (const s of createdStudents) {
-        if (!existingIds.has(s.id)) {
-          combined.push(s);
-          existingIds.add(s.id);
-        }
-      }
-
-      return combined.filter(
-        (s) => !deletedStudentIds.has(s.id) && !deletedStudentIds.has(s.student_number)
-      );
-    },
+    getStudents: (id: string) => fetchJson<Student[]>(`${API_BASE}/halaqah/${id}/students`),
   },
 
-  // Students (With reload-proof persistent client cache)
+  // Students (Direct backend database sync)
   students: {
-    list: async (): Promise<Student[]> => {
-      let serverList: Student[] = [];
-      try {
-        serverList = await fetchJson<Student[]>(`${API_BASE}/students`);
-      } catch (err) {
-        console.warn('Backend students fetch failed, falling back to local storage:', err);
-      }
+    list: () => fetchJson<Student[]>(`${API_BASE}/students`),
 
-      const deletedIds = storageSync.getDeletedStudentIds();
-      const createdList = storageSync.getCreatedStudents();
-      const updatedMap = storageSync.getUpdatedStudents();
-
-      // Merge created students that are not in serverList
-      const existingIds = new Set(serverList.map((s) => s.id));
-      const existingNIS = new Set(serverList.map((s) => s.student_number));
-
-      const combined: Student[] = [...serverList];
-      for (const s of createdList) {
-        if (!existingIds.has(s.id) && !existingNIS.has(s.student_number)) {
-          combined.push(s);
-          existingIds.add(s.id);
-        }
-      }
-
-      // Filter deleted and apply updates
-      return combined
-        .filter((s) => !deletedIds.has(s.id))
-        .map((s) => {
-          if (updatedMap[s.id]) {
-            return { ...s, ...updatedMap[s.id] };
-          }
-          return s;
-        });
-    },
-
-    getDetail: async (id: string) => {
-      const deletedIds = storageSync.getDeletedStudentIds();
-      if (deletedIds.has(id)) {
-        throw new Error('Data santri tidak ditemukan.');
-      }
-
-      let detail: {
+    getDetail: (id: string) =>
+      fetchJson<{
         student: Student;
         records: ViolationRecord[];
         positive_records?: PositiveRecord[];
         history: any[];
-      };
-
-      try {
-        detail = await fetchJson<any>(`${API_BASE}/students/${id}`);
-      } catch (err: any) {
-        // Look in locally created students if backend returns 404
-        const localStudents = storageSync.getCreatedStudents();
-        const found = localStudents.find((s) => s.id === id || s.student_number === id);
-        if (!found) {
-          throw new Error('Data santri tidak ditemukan.');
-        }
-
-        detail = {
-          student: found,
-          records: [],
-          positive_records: [],
-          history: [],
-        };
-      }
-
-      // Filter deleted records
-      const deletedRecordIds = storageSync.getDeletedRecordIds();
-      const cancelledRecords = storageSync.getCancelledRecords();
-      const deletedPosRecordIds = storageSync.getDeletedPosRecordIds();
-      const cancelledPosRecords = storageSync.getCancelledPosRecords();
-
-      const filteredRecords = (detail.records || [])
-        .filter((r) => !deletedRecordIds.has(r.id))
-        .map((r) => {
-          if (cancelledRecords[r.id]) {
-            return { ...r, status: 'cancelled' as const, cancellation_reason: cancelledRecords[r.id] };
-          }
-          return r;
-        });
-
-      const filteredPosRecords = (detail.positive_records || [])
-        .filter((r) => !deletedPosRecordIds.has(r.id))
-        .map((r) => {
-          if (cancelledPosRecords[r.id]) {
-            return { ...r, status: 'cancelled' as const, cancellation_reason: cancelledPosRecords[r.id] };
-          }
-          return r;
-        });
-
-      return {
-        ...detail,
-        records: filteredRecords,
-        positive_records: filteredPosRecords,
-      };
-    },
+      }>(`${API_BASE}/students/${id}`),
 
     create: async (data: any) => {
       const res = await fetchJson<{ message: string; studentId: string }>(`${API_BASE}/students`, {
@@ -374,44 +265,11 @@ export const api = {
       }),
   },
 
-  // Violation Records (Rekap Terpadu with reload-proof persistence)
+  // Violation Records (Rekap Terpadu directly synced with backend database)
   records: {
-    list: async (params: Record<string, string> = {}): Promise<ViolationRecord[]> => {
+    list: (params: Record<string, string> = {}): Promise<ViolationRecord[]> => {
       const qs = new URLSearchParams(params).toString();
-      let serverList: ViolationRecord[] = [];
-      try {
-        serverList = await fetchJson<ViolationRecord[]>(`${API_BASE}/records${qs ? '?' + qs : ''}`);
-      } catch (err) {
-        console.warn('Backend records fetch failed, falling back to local storage:', err);
-      }
-
-      const deletedRecordIds = storageSync.getDeletedRecordIds();
-      const deletedStudentIds = storageSync.getDeletedStudentIds();
-      const cancelledRecords = storageSync.getCancelledRecords();
-      const createdRecords = storageSync.getCreatedRecords();
-
-      const existingIds = new Set(serverList.map((r) => r.id));
-      const combined: ViolationRecord[] = [...serverList];
-
-      for (const r of createdRecords) {
-        if (!existingIds.has(r.id)) {
-          combined.unshift(r);
-          existingIds.add(r.id);
-        }
-      }
-
-      return combined
-        .filter((r) => !deletedRecordIds.has(r.id) && !deletedStudentIds.has(r.student_id))
-        .map((r) => {
-          if (cancelledRecords[r.id]) {
-            return {
-              ...r,
-              status: 'cancelled' as const,
-              cancellation_reason: cancelledRecords[r.id],
-            };
-          }
-          return r;
-        });
+      return fetchJson<ViolationRecord[]>(`${API_BASE}/records${qs ? '?' + qs : ''}`);
     },
 
     create: async (data: {
@@ -502,68 +360,9 @@ export const api = {
       }
     },
 
-    stats: async (division?: string): Promise<DashboardStats> => {
+    stats: (division?: string): Promise<DashboardStats> => {
       const qs = division && division !== 'all' ? '?division=' + encodeURIComponent(division) : '';
-      let serverStats: DashboardStats;
-      try {
-        serverStats = await fetchJson<DashboardStats>(`${API_BASE}/records/stats${qs}`);
-      } catch (err) {
-        console.warn('Backend stats fetch failed, falling back to empty stats:', err);
-        serverStats = {
-          summary: {
-            totalStudents: 0,
-            totalTeachers: 0,
-            totalHalaqah: 0,
-            totalRecords: 0,
-            totalPoints: 0,
-            todayCount: 0,
-            monthCount: 0,
-            tahfizhRecordsCount: 0,
-            tahfizhTotalPoints: 0,
-            kesantrianRecordsCount: 0,
-            kesantrianTotalPoints: 0,
-            totalPositiveRecords: 0,
-            totalPointsDeducted: 0,
-            tahfizhDeductedPoints: 0,
-            kesantrianDeductedPoints: 0,
-            netTotalPoints: 0,
-          },
-          topStudents: [],
-          byCategory: [],
-          pointsByHalaqah: [],
-          monthlyTrend: [],
-          studentsNeedingAttention: [],
-        };
-      }
-
-      const deletedStudentIds = storageSync.getDeletedStudentIds();
-      const createdStudents = storageSync.getCreatedStudents().filter((s) => !deletedStudentIds.has(s.id));
-
-      // Filter out deleted students from topStudents and studentsNeedingAttention
-      const filteredTopStudents = (serverStats.topStudents || []).filter(
-        (s) => !deletedStudentIds.has(s.id) && !deletedStudentIds.has(s.student_number)
-      );
-
-      const filteredNeedingAttention = (serverStats.studentsNeedingAttention || []).filter(
-        (s) => !deletedStudentIds.has(s.id) && !deletedStudentIds.has(s.student_number)
-      );
-
-      // Adjust total students
-      let adjustedTotalStudents = serverStats.summary.totalStudents;
-      if (deletedStudentIds.size > 0) {
-        adjustedTotalStudents = Math.max(0, adjustedTotalStudents - deletedStudentIds.size);
-      }
-      adjustedTotalStudents += createdStudents.length;
-
-      return {
-        ...serverStats,
-        summary: {
-          ...serverStats.summary,
-          totalStudents: adjustedTotalStudents,
-        },
-        topStudents: filteredTopStudents,
-        studentsNeedingAttention: filteredNeedingAttention,
-      };
+      return fetchJson<DashboardStats>(`${API_BASE}/records/stats${qs}`);
     },
   },
 
@@ -588,44 +387,11 @@ export const api = {
       }),
   },
 
-  // Positive Records (Catatan Kebaikan & Pengurangan Poin with reload-proof persistence)
+  // Positive Records (Catatan Kebaikan & Pengurangan Poin directly synced with backend)
   positiveRecords: {
-    list: async (params: Record<string, string> = {}): Promise<PositiveRecord[]> => {
+    list: (params: Record<string, string> = {}): Promise<PositiveRecord[]> => {
       const qs = new URLSearchParams(params).toString();
-      let serverList: PositiveRecord[] = [];
-      try {
-        serverList = await fetchJson<PositiveRecord[]>(`${API_BASE}/positive-records${qs ? '?' + qs : ''}`);
-      } catch (err) {
-        console.warn('Backend positive records fetch note:', err);
-      }
-
-      const deletedPosIds = storageSync.getDeletedPosRecordIds();
-      const deletedStudentIds = storageSync.getDeletedStudentIds();
-      const cancelledPosRecords = storageSync.getCancelledPosRecords();
-      const createdPosRecords = storageSync.getCreatedPosRecords();
-
-      const existingIds = new Set(serverList.map((r) => r.id));
-      const combined: PositiveRecord[] = [...serverList];
-
-      for (const r of createdPosRecords) {
-        if (!existingIds.has(r.id)) {
-          combined.unshift(r);
-          existingIds.add(r.id);
-        }
-      }
-
-      return combined
-        .filter((r) => !deletedPosIds.has(r.id) && !deletedStudentIds.has(r.student_id))
-        .map((r) => {
-          if (cancelledPosRecords[r.id]) {
-            return {
-              ...r,
-              status: 'cancelled' as const,
-              cancellation_reason: cancelledPosRecords[r.id],
-            };
-          }
-          return r;
-        });
+      return fetchJson<PositiveRecord[]>(`${API_BASE}/positive-records${qs ? '?' + qs : ''}`);
     },
 
     create: async (data: {

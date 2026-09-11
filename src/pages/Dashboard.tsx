@@ -72,10 +72,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     window.addEventListener('app:data-changed', handleDataChanged);
     window.addEventListener('storage', handleDataChanged);
+    window.addEventListener('focus', handleDataChanged);
+
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        handleDataChanged();
+      }
+    }, 8000);
 
     return () => {
       window.removeEventListener('app:data-changed', handleDataChanged);
       window.removeEventListener('storage', handleDataChanged);
+      window.removeEventListener('focus', handleDataChanged);
+      clearInterval(interval);
     };
   }, [currentUser, dashboardDivision, isTeacher]);
 
@@ -352,7 +361,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <span className="truncate">Poin Netto ({dashboardDivision === 'kesantrian' ? 'Kesantrian' : dashboardDivision === 'tahfizh' ? 'Tahfizh' : 'Terpadu'})</span>
           </div>
           <p className="text-xl sm:text-3xl font-black text-rose-600">
-            {stats?.summary.totalPoints || 0}
+            {stats?.summary.netTotalPoints !== undefined ? stats.summary.netTotalPoints : (stats?.summary.totalPoints || 0)}
           </p>
           <span className="text-[10px] sm:text-[11px] text-slate-500 font-medium block truncate">
             {stats?.summary.totalRecords || 0} pelanggaran aktif
