@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import type { Student, Halaqah, User } from '../types';
 import { api } from '../services/api';
+import { storageSync } from '../services/storageSync';
 import { StatusBadge } from '../components/Badge';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
@@ -85,13 +86,25 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
 
   useEffect(() => {
     loadStudentsAndHalaqah();
+
+    const handleDataChanged = (e: any) => {
+      if (!e?.detail?.resource || e?.detail?.resource === 'student' || e?.detail?.resource === 'record' || e?.detail?.resource === 'all') {
+        loadStudentsAndHalaqah();
+      }
+    };
+
+    window.addEventListener('app:data-changed', handleDataChanged);
+    return () => {
+      window.removeEventListener('app:data-changed', handleDataChanged);
+    };
   }, []);
 
   const loadStudentsAndHalaqah = async () => {
     setLoading(true);
     try {
       const [sList, hList] = await Promise.all([api.students.list(), api.halaqah.list()]);
-      setStudents(sList);
+      const deletedIds = storageSync.getDeletedStudentIds();
+      setStudents(sList.filter((s) => !deletedIds.has(s.id)));
       setHalaqahs(hList);
     } catch (err: any) {
       console.error('Error loading students:', err);
@@ -184,14 +197,25 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
   // Delete Student
   const handleDeleteConfirm = async () => {
     if (!studentToDelete) return;
+    const targetId = studentToDelete.id;
     setIsDeleting(true);
     setDeleteError('');
     try {
-      await api.students.delete(studentToDelete.id, currentUser?.name || 'Admin');
+      // 1. Trigger HTTP DELETE request to backend database
+      await api.students.delete(targetId, currentUser?.name || 'Admin');
+
+      // 2. Immediately update local state so row is removed without delay or resurrection
+      setStudents((prev) => prev.filter((s) => s.id !== targetId));
       setStudentToDelete(null);
+
+      // 3. Notify application data changed
+      storageSync.notifyDataChange({ action: 'delete', resource: 'student', id: targetId });
+
+      // 4. Refetch from database to ensure full synchronization
       await loadStudentsAndHalaqah();
     } catch (err: any) {
-      setDeleteError(err.message || 'Gagal menghapus data santri');
+      console.error('Error deleting student:', err);
+      setDeleteError(err.message || 'Gagal menghapus data santri dari database');
     } finally {
       setIsDeleting(false);
     }

@@ -1,6 +1,11 @@
 import { query, run, logAudit } from './database';
 
 export function seedStudentsIfEmpty() {
+  const userCount = query<{ count: number }>('SELECT COUNT(*) as count FROM users')[0]?.count || 0;
+  if (userCount > 0) {
+    // Database already initialized with users, do not auto-reseed deleted students
+    return;
+  }
   const studentCount = query<{ count: number }>('SELECT COUNT(*) as count FROM students')[0]?.count || 0;
   if (studentCount > 0) return;
 
@@ -208,7 +213,6 @@ export function seedPositiveActionsIfEmpty() {
 export function seedDatabase() {
   const userCount = query<{ count: number }>('SELECT COUNT(*) as count FROM users')[0]?.count || 0;
   if (userCount > 0) {
-    seedStudentsIfEmpty();
     seedKesantrianViolationsIfEmpty();
     seedNewRolesIfEmpty();
     seedPositiveActionsIfEmpty();

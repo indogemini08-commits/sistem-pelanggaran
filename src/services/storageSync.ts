@@ -17,16 +17,6 @@ const KEYS = {
   CREATED_POS_RECORDS: 'imbs_created_pos_records',
 };
 
-// Auto-clean legacy suppression keys so the client is always 100% in sync with the backend database
-if (typeof window !== 'undefined' && window.localStorage) {
-  try {
-    window.localStorage.removeItem(KEYS.DELETED_STUDENTS);
-    window.localStorage.removeItem(KEYS.DELETED_RECORDS);
-    window.localStorage.removeItem(KEYS.DELETED_POS_RECORDS);
-  } catch (e) {
-    // ignore
-  }
-}
 
 function safeGetItem<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined' || !window.localStorage) return fallback;

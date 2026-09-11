@@ -364,6 +364,10 @@ function logAudit(options) {
 
 // server/src/db/seed.ts
 function seedStudentsIfEmpty() {
+  const userCount = query("SELECT COUNT(*) as count FROM users")[0]?.count || 0;
+  if (userCount > 0) {
+    return;
+  }
   const studentCount = query("SELECT COUNT(*) as count FROM students")[0]?.count || 0;
   if (studentCount > 0) return;
   console.log("Tabel santri kosong, menginisialisasi 10 santri awal...");
@@ -563,7 +567,6 @@ function seedPositiveActionsIfEmpty() {
 function seedDatabase() {
   const userCount = query("SELECT COUNT(*) as count FROM users")[0]?.count || 0;
   if (userCount > 0) {
-    seedStudentsIfEmpty();
     seedKesantrianViolationsIfEmpty();
     seedNewRolesIfEmpty();
     seedPositiveActionsIfEmpty();
@@ -1505,13 +1508,14 @@ router5.delete("/:id", (req, res) => {
     const { actorName = "Admin" } = req.body || {};
     const student = get("SELECT * FROM students WHERE id = ? OR student_number = ?", [id, id]);
     if (!student) {
-      return res.json({ message: "Santri sudah tidak ada atau telah dihapus" });
+      return res.json({ success: true, message: "Santri sudah tidak ada atau telah dihapus" });
     }
     const targetId = student.id;
     run("DELETE FROM student_halaqah_history WHERE student_id = ?", [targetId]);
     run("DELETE FROM violation_records WHERE student_id = ?", [targetId]);
     run("DELETE FROM positive_records WHERE student_id = ?", [targetId]);
     run("DELETE FROM students WHERE id = ?", [targetId]);
+    persistDb();
     logAudit({
       userName: actorName,
       action: "DELETE_STUDENT",
@@ -1519,9 +1523,11 @@ router5.delete("/:id", (req, res) => {
       recordId: targetId,
       oldData: student
     });
-    return res.json({ message: "Santri beserta histori berhasil dihapus" });
+    console.log(`[DELETE_STUDENT] Santri ${student.name} (${targetId}) dan seluruh histori berhasil dihapus permanen oleh ${actorName}.`);
+    return res.json({ success: true, message: "Santri beserta histori berhasil dihapus secara permanen" });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    console.error("Error saat menghapus santri:", err);
+    return res.status(500).json({ error: err.message || "Gagal menghapus santri dari database" });
   }
 });
 router5.post("/import", (req, res) => {

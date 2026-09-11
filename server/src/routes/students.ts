@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query, get, run, logAudit } from '../db/database';
+import { query, get, run, logAudit, persistDb } from '../db/database';
 
 const router = Router();
 
@@ -318,7 +318,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     const student = get<any>('SELECT * FROM students WHERE id = ? OR student_number = ?', [id, id]);
     if (!student) {
       // Idempotent: If student is already deleted or not found, return success so frontend stays clean
-      return res.json({ message: 'Santri sudah tidak ada atau telah dihapus' });
+      return res.json({ success: true, message: 'Santri sudah tidak ada atau telah dihapus' });
     }
 
     const targetId = student.id;
@@ -329,6 +329,9 @@ router.delete('/:id', (req: Request, res: Response) => {
     run('DELETE FROM positive_records WHERE student_id = ?', [targetId]);
     run('DELETE FROM students WHERE id = ?', [targetId]);
 
+    // Ensure database changes are flushed immediately to disk
+    persistDb();
+
     logAudit({
       userName: actorName,
       action: 'DELETE_STUDENT',
@@ -337,9 +340,11 @@ router.delete('/:id', (req: Request, res: Response) => {
       oldData: student,
     });
 
-    return res.json({ message: 'Santri beserta histori berhasil dihapus' });
+    console.log(`[DELETE_STUDENT] Santri ${student.name} (${targetId}) dan seluruh histori berhasil dihapus permanen oleh ${actorName}.`);
+    return res.json({ success: true, message: 'Santri beserta histori berhasil dihapus secara permanen' });
   } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    console.error('Error saat menghapus santri:', err);
+    return res.status(500).json({ error: err.message || 'Gagal menghapus santri dari database' });
   }
 });
 

@@ -132,7 +132,23 @@ export const api = {
 
   // Students (Direct backend database sync)
   students: {
-    list: () => fetchJson<Student[]>(`${API_BASE}/students`),
+    list: async (): Promise<Student[]> => {
+      const serverList = await fetchJson<Student[]>(`${API_BASE}/students`);
+      const deletedIds = storageSync.getDeletedStudentIds();
+      const createdStudents = storageSync.getCreatedStudents();
+
+      const existingIds = new Set(serverList.map((s) => s.id));
+      const combined = [...serverList];
+
+      for (const s of createdStudents) {
+        if (!existingIds.has(s.id)) {
+          combined.unshift(s);
+          existingIds.add(s.id);
+        }
+      }
+
+      return combined.filter((s) => !deletedIds.has(s.id));
+    },
 
     getDetail: (id: string) =>
       fetchJson<{
@@ -193,16 +209,13 @@ export const api = {
       // 1. Immediately persist deletion in browser storage (Reload-Proof)
       storageSync.addDeletedStudentId(id);
 
-      // 2. Send DELETE request to backend (idempotent; ignore 404 if already absent)
-      try {
-        return await fetchJson<{ message: string }>(`${API_BASE}/students/${id}`, {
-          method: 'DELETE',
-          body: JSON.stringify({ actorName }),
-        });
-      } catch (err: any) {
-        console.warn('Backend student deletion response note:', err.message);
-        return { message: 'Data santri berhasil dihapus' };
-      }
+      // 2. Send DELETE request to backend - DO NOT silently swallow errors!
+      const res = await fetchJson<{ success?: boolean; message: string }>(`${API_BASE}/students/${id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ actorName }),
+      });
+
+      return res;
     },
 
     importExcel: async (rows: any[], actorName?: string) => {
