@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { PositiveRecord, SchoolSettings, User as UserType, ViolationDivision } from '../types';
 import { api } from '../services/api';
+import { storageSync } from '../services/storageSync';
 import { exportToExcel } from '../utils/excelHelper';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 
@@ -64,6 +65,17 @@ export const PositiveRecordsPage: React.FC<PositiveRecordsPageProps> = ({
 
   useEffect(() => {
     loadRecords();
+
+    const handleDataChanged = (e: any) => {
+      if (!e?.detail?.resource || e?.detail?.resource === 'positive_record' || e?.detail?.resource === 'student' || e?.detail?.resource === 'all') {
+        loadRecords();
+      }
+    };
+
+    window.addEventListener('app:data-changed', handleDataChanged);
+    return () => {
+      window.removeEventListener('app:data-changed', handleDataChanged);
+    };
   }, [filterDivision]);
 
   const loadRecords = async () => {
@@ -132,6 +144,7 @@ export const PositiveRecordsPage: React.FC<PositiveRecordsPageProps> = ({
   const handleCancel = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!recordToCancel) return;
+    const targetId = recordToCancel.id;
     if (!cancelReason.trim()) {
       setCancelError('Alasan pembatalan wajib diisi');
       return;
@@ -140,10 +153,14 @@ export const PositiveRecordsPage: React.FC<PositiveRecordsPageProps> = ({
     setCancelling(true);
     setCancelError('');
     try {
-      await api.positiveRecords.cancel(recordToCancel.id, cancelReason.trim(), currentUser?.name || 'Admin');
+      await api.positiveRecords.cancel(targetId, cancelReason.trim(), currentUser?.name || 'Admin');
+      setRecords((prev) =>
+        prev.map((r) => (r.id === targetId ? { ...r, status: 'cancelled' as const, cancellation_reason: cancelReason.trim() } : r))
+      );
       setRecordToCancel(null);
       setCancelReason('');
-      loadRecords();
+      storageSync.notifyDataChange({ action: 'cancel', resource: 'positive_record', id: targetId });
+      await loadRecords();
     } catch (err: any) {
       setCancelError(err.message || 'Gagal membatalkan catatan');
     } finally {
@@ -154,11 +171,14 @@ export const PositiveRecordsPage: React.FC<PositiveRecordsPageProps> = ({
   // Handle Hard Delete
   const handleDelete = async () => {
     if (!recordToDelete) return;
+    const targetId = recordToDelete.id;
     setDeleting(true);
     try {
-      await api.positiveRecords.delete(recordToDelete.id, currentUser?.name || 'Admin');
+      await api.positiveRecords.delete(targetId, currentUser?.name || 'Admin');
+      setRecords((prev) => prev.filter((r) => r.id !== targetId));
       setRecordToDelete(null);
-      loadRecords();
+      storageSync.notifyDataChange({ action: 'delete', resource: 'positive_record', id: targetId });
+      await loadRecords();
     } catch (err: any) {
       alert('Gagal menghapus: ' + err.message);
     } finally {

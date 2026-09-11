@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query, get, run, logAudit } from '../db/database';
+import { query, get, run, logAudit, persistDb } from '../db/database';
 
 const router = Router();
 
@@ -304,6 +304,7 @@ router.put('/:id/cancel', (req: Request, res: Response) => {
        WHERE id = ?`,
       [actorName, cancellationReason || 'Dibatalkan oleh pengawas', id]
     );
+    persistDb();
 
     logAudit({
       userName: actorName,
@@ -314,7 +315,7 @@ router.put('/:id/cancel', (req: Request, res: Response) => {
       newData: { status: 'cancelled', reason: cancellationReason },
     });
 
-    return res.json({ message: 'Catatan pelanggaran berhasil dibatalkan. Total poin santri telah diperbarui otomatis.' });
+    return res.json({ success: true, message: 'Catatan pelanggaran berhasil dibatalkan. Total poin santri telah diperbarui otomatis.' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -328,10 +329,11 @@ router.delete('/:id', (req: Request, res: Response) => {
 
     const record = get<any>('SELECT * FROM violation_records WHERE id = ?', [id]);
     if (!record) {
-      return res.json({ message: 'Catatan pelanggaran sudah tidak ada atau telah dihapus' });
+      return res.json({ success: true, message: 'Catatan pelanggaran sudah tidak ada atau telah dihapus' });
     }
 
     run('DELETE FROM violation_records WHERE id = ?', [id]);
+    persistDb();
 
     logAudit({
       userName: actorName,
@@ -341,7 +343,7 @@ router.delete('/:id', (req: Request, res: Response) => {
       oldData: record,
     });
 
-    return res.json({ message: 'Catatan pelanggaran berhasil dihapus permanen' });
+    return res.json({ success: true, message: 'Catatan pelanggaran berhasil dihapus permanen' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }

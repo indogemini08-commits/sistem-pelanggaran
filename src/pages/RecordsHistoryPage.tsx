@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { ViolationRecord, Halaqah, Teacher, SchoolSettings, User, ViolationDivision } from '../types';
 import { api } from '../services/api';
+import { storageSync } from '../services/storageSync';
 import { exportToExcel } from '../utils/excelHelper';
 import { generateViolationReportPDF } from '../utils/pdfGenerator';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -70,7 +71,18 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
 
   useEffect(() => {
     loadRecordsAndOptions();
-  }, []);
+
+    const handleDataChanged = (e: any) => {
+      if (!e?.detail?.resource || e?.detail?.resource === 'record' || e?.detail?.resource === 'student' || e?.detail?.resource === 'all') {
+        loadRecordsAndOptions();
+      }
+    };
+
+    window.addEventListener('app:data-changed', handleDataChanged);
+    return () => {
+      window.removeEventListener('app:data-changed', handleDataChanged);
+    };
+  }, [filterDivision]);
 
   const loadRecordsAndOptions = async () => {
     setLoading(true);
@@ -109,13 +121,18 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
   const handleCancelRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!recordToCancel) return;
+    const targetId = recordToCancel.id;
     setCancelError('');
 
     setCancelling(true);
     try {
-      await api.records.cancel(recordToCancel.id, cancelReason, currentUser?.name || 'Admin');
+      await api.records.cancel(targetId, cancelReason, currentUser?.name || 'Admin');
+      setRecords((prev) =>
+        prev.map((r) => (r.id === targetId ? { ...r, status: 'cancelled' as const, cancellation_reason: cancelReason } : r))
+      );
       setRecordToCancel(null);
       setCancelReason('');
+      storageSync.notifyDataChange({ action: 'cancel', resource: 'record', id: targetId });
       await loadRecordsAndOptions();
     } catch (err: any) {
       setCancelError(err.message || 'Gagal membatalkan catatan');
@@ -127,13 +144,17 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
   // Hard Delete Record
   const handleDeleteRecord = async () => {
     if (!recordToDelete) return;
+    const targetId = recordToDelete.id;
     setDeleteError('');
     setIsDeleting(true);
     try {
-      await api.records.delete(recordToDelete.id, currentUser?.name || 'Admin');
+      await api.records.delete(targetId, currentUser?.name || 'Admin');
+      setRecords((prev) => prev.filter((r) => r.id !== targetId));
       setRecordToDelete(null);
+      storageSync.notifyDataChange({ action: 'delete', resource: 'record', id: targetId });
       await loadRecordsAndOptions();
     } catch (err: any) {
+      console.error('Error deleting record:', err);
       setDeleteError(err.message || 'Gagal menghapus data secara permanen');
     } finally {
       setIsDeleting(false);

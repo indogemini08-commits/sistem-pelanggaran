@@ -280,9 +280,36 @@ export const api = {
 
   // Violation Records (Rekap Terpadu directly synced with backend database)
   records: {
-    list: (params: Record<string, string> = {}): Promise<ViolationRecord[]> => {
+    list: async (params: Record<string, string> = {}): Promise<ViolationRecord[]> => {
       const qs = new URLSearchParams(params).toString();
-      return fetchJson<ViolationRecord[]>(`${API_BASE}/records${qs ? '?' + qs : ''}`);
+      const serverList = await fetchJson<ViolationRecord[]>(`${API_BASE}/records${qs ? '?' + qs : ''}`);
+      const deletedRecordIds = storageSync.getDeletedRecordIds();
+      const deletedStudentIds = storageSync.getDeletedStudentIds();
+      const cancelledRecords = storageSync.getCancelledRecords();
+      const createdRecords = storageSync.getCreatedRecords();
+
+      const existingIds = new Set(serverList.map((r) => r.id));
+      const combined: ViolationRecord[] = [...serverList];
+
+      for (const r of createdRecords) {
+        if (!existingIds.has(r.id)) {
+          combined.unshift(r);
+          existingIds.add(r.id);
+        }
+      }
+
+      return combined
+        .filter((r) => !deletedRecordIds.has(r.id) && !deletedStudentIds.has(r.student_id))
+        .map((r) => {
+          if (cancelledRecords[r.id]) {
+            return {
+              ...r,
+              status: 'cancelled' as const,
+              cancellation_reason: cancelledRecords[r.id],
+            };
+          }
+          return r;
+        });
     },
 
     create: async (data: {
@@ -342,40 +369,38 @@ export const api = {
     },
 
     cancel: async (id: string, cancellationReason: string, actorName?: string) => {
-      // 1. Immediately persist cancellation in browser storage
       storageSync.addCancelledRecord(id, cancellationReason);
 
-      // 2. Sync to backend
-      try {
-        return await fetchJson<{ message: string }>(`${API_BASE}/records/${id}/cancel`, {
-          method: 'PUT',
-          body: JSON.stringify({ cancellationReason, actorName }),
-        });
-      } catch (err: any) {
-        console.warn('Backend cancel note:', err.message);
-        return { message: 'Catatan pelanggaran berhasil dibatalkan' };
-      }
+      return await fetchJson<{ success?: boolean; message: string }>(`${API_BASE}/records/${id}/cancel`, {
+        method: 'PUT',
+        body: JSON.stringify({ cancellationReason, actorName }),
+      });
     },
 
     delete: async (id: string, actorName?: string) => {
-      // 1. Immediately persist deletion in browser storage (Reload-Proof)
       storageSync.addDeletedRecordId(id);
 
-      // 2. Sync to backend (idempotent; ignore 404)
-      try {
-        return await fetchJson<{ message: string }>(`${API_BASE}/records/${id}`, {
-          method: 'DELETE',
-          body: JSON.stringify({ actorName }),
-        });
-      } catch (err: any) {
-        console.warn('Backend record delete note:', err.message);
-        return { message: 'Catatan pelanggaran berhasil dihapus permanen' };
-      }
+      return await fetchJson<{ success?: boolean; message: string }>(`${API_BASE}/records/${id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ actorName }),
+      });
     },
 
-    stats: (division?: string): Promise<DashboardStats> => {
+    stats: async (division?: string): Promise<DashboardStats> => {
       const qs = division && division !== 'all' ? '?division=' + encodeURIComponent(division) : '';
-      return fetchJson<DashboardStats>(`${API_BASE}/records/stats${qs}`);
+      const data = await fetchJson<DashboardStats>(`${API_BASE}/records/stats${qs}`);
+      const deletedStudentIds = storageSync.getDeletedStudentIds();
+
+      if (data && deletedStudentIds.size > 0) {
+        if (Array.isArray(data.topStudents)) {
+          data.topStudents = data.topStudents.filter((s) => !deletedStudentIds.has(s.id));
+        }
+        if (Array.isArray(data.studentsNeedingAttention)) {
+          data.studentsNeedingAttention = data.studentsNeedingAttention.filter((s) => !deletedStudentIds.has(s.id));
+        }
+      }
+
+      return data;
     },
   },
 
@@ -402,9 +427,36 @@ export const api = {
 
   // Positive Records (Catatan Kebaikan & Pengurangan Poin directly synced with backend)
   positiveRecords: {
-    list: (params: Record<string, string> = {}): Promise<PositiveRecord[]> => {
+    list: async (params: Record<string, string> = {}): Promise<PositiveRecord[]> => {
       const qs = new URLSearchParams(params).toString();
-      return fetchJson<PositiveRecord[]>(`${API_BASE}/positive-records${qs ? '?' + qs : ''}`);
+      const serverList = await fetchJson<PositiveRecord[]>(`${API_BASE}/positive-records${qs ? '?' + qs : ''}`);
+      const deletedPosIds = storageSync.getDeletedPosRecordIds();
+      const deletedStudentIds = storageSync.getDeletedStudentIds();
+      const cancelledPosRecords = storageSync.getCancelledPosRecords();
+      const createdPosRecords = storageSync.getCreatedPosRecords();
+
+      const existingIds = new Set(serverList.map((r) => r.id));
+      const combined: PositiveRecord[] = [...serverList];
+
+      for (const r of createdPosRecords) {
+        if (!existingIds.has(r.id)) {
+          combined.unshift(r);
+          existingIds.add(r.id);
+        }
+      }
+
+      return combined
+        .filter((r) => !deletedPosIds.has(r.id) && !deletedStudentIds.has(r.student_id))
+        .map((r) => {
+          if (cancelledPosRecords[r.id]) {
+            return {
+              ...r,
+              status: 'cancelled' as const,
+              cancellation_reason: cancelledPosRecords[r.id],
+            };
+          }
+          return r;
+        });
     },
 
     create: async (data: {
@@ -458,28 +510,18 @@ export const api = {
 
     cancel: async (id: string, reason: string, actorName?: string) => {
       storageSync.addCancelledPosRecord(id, reason);
-      try {
-        return await fetchJson<{ message: string }>(`${API_BASE}/positive-records/${id}/cancel`, {
-          method: 'PUT',
-          body: JSON.stringify({ reason, actorName }),
-        });
-      } catch (err: any) {
-        console.warn('Backend positive record cancel note:', err.message);
-        return { message: 'Catatan kebaikan berhasil dibatalkan' };
-      }
+      return await fetchJson<{ success?: boolean; message: string }>(`${API_BASE}/positive-records/${id}/cancel`, {
+        method: 'PUT',
+        body: JSON.stringify({ reason, actorName }),
+      });
     },
 
     delete: async (id: string, actorName?: string) => {
       storageSync.addDeletedPosRecordId(id);
-      try {
-        return await fetchJson<{ message: string }>(`${API_BASE}/positive-records/${id}`, {
-          method: 'DELETE',
-          body: JSON.stringify({ actorName }),
-        });
-      } catch (err: any) {
-        console.warn('Backend positive record delete note:', err.message);
-        return { message: 'Catatan kebaikan berhasil dihapus' };
-      }
+      return await fetchJson<{ success?: boolean; message: string }>(`${API_BASE}/positive-records/${id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ actorName }),
+      });
     },
   },
 

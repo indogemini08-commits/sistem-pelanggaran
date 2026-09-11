@@ -2015,6 +2015,7 @@ router7.put("/:id/cancel", (req, res) => {
        WHERE id = ?`,
       [actorName, cancellationReason || "Dibatalkan oleh pengawas", id]
     );
+    persistDb();
     logAudit({
       userName: actorName,
       action: "CANCEL_VIOLATION_RECORD",
@@ -2023,7 +2024,7 @@ router7.put("/:id/cancel", (req, res) => {
       oldData: { status: "active", points: record.points_snapshot },
       newData: { status: "cancelled", reason: cancellationReason }
     });
-    return res.json({ message: "Catatan pelanggaran berhasil dibatalkan. Total poin santri telah diperbarui otomatis." });
+    return res.json({ success: true, message: "Catatan pelanggaran berhasil dibatalkan. Total poin santri telah diperbarui otomatis." });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -2034,9 +2035,10 @@ router7.delete("/:id", (req, res) => {
     const { actorName = "Admin" } = req.body || {};
     const record = get("SELECT * FROM violation_records WHERE id = ?", [id]);
     if (!record) {
-      return res.json({ message: "Catatan pelanggaran sudah tidak ada atau telah dihapus" });
+      return res.json({ success: true, message: "Catatan pelanggaran sudah tidak ada atau telah dihapus" });
     }
     run("DELETE FROM violation_records WHERE id = ?", [id]);
+    persistDb();
     logAudit({
       userName: actorName,
       action: "HARD_DELETE_VIOLATION_RECORD",
@@ -2044,7 +2046,7 @@ router7.delete("/:id", (req, res) => {
       recordId: id,
       oldData: record
     });
-    return res.json({ message: "Catatan pelanggaran berhasil dihapus permanen" });
+    return res.json({ success: true, message: "Catatan pelanggaran berhasil dihapus permanen" });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -2596,6 +2598,7 @@ router11.put("/:id/cancel", (req, res) => {
        WHERE id = ?`,
       [actorName, reason.trim(), id]
     );
+    persistDb();
     logAudit({
       userName: actorName,
       action: "CANCEL_POSITIVE_RECORD",
@@ -2604,7 +2607,7 @@ router11.put("/:id/cancel", (req, res) => {
       oldData: { status: "active", points: record.points_deducted },
       newData: { status: "cancelled", reason: reason.trim() }
     });
-    return res.json({ message: "Catatan kebaikan berhasil dibatalkan" });
+    return res.json({ success: true, message: "Catatan kebaikan berhasil dibatalkan" });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -2615,9 +2618,10 @@ router11.delete("/:id", (req, res) => {
     const { actorName = "Admin" } = req.body || {};
     const record = get("SELECT * FROM positive_records WHERE id = ?", [id]);
     if (!record) {
-      return res.json({ message: "Catatan kebaikan sudah tidak ada atau telah dihapus" });
+      return res.json({ success: true, message: "Catatan kebaikan sudah tidak ada atau telah dihapus" });
     }
     run("DELETE FROM positive_records WHERE id = ?", [id]);
+    persistDb();
     logAudit({
       userName: actorName,
       action: "DELETE_POSITIVE_RECORD",
@@ -2625,7 +2629,7 @@ router11.delete("/:id", (req, res) => {
       recordId: id,
       oldData: record
     });
-    return res.json({ message: "Catatan kebaikan berhasil dihapus permanen" });
+    return res.json({ success: true, message: "Catatan kebaikan berhasil dihapus permanen" });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
