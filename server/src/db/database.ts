@@ -11,20 +11,15 @@ const DB_FILE = path.join(DATA_DIR, 'halaqah.db');
 
 async function loadSqlJsEngine() {
   try {
+    // @ts-ignore
+    const asmMod = await import('sql.js/dist/sql-asm.js');
+    const initAsm = asmMod.default || asmMod;
+    return await initAsm();
+  } catch (asmErr) {
+    console.warn('sql-asm.js gagal dimuat, mencoba sql.js default:', asmErr);
     const mod = await import('sql.js');
     const init = mod.default || mod;
     return await init();
-  } catch (wasmErr) {
-    console.warn('WASM sql.js gagal dimuat, beralih ke fallback asm.js:', wasmErr);
-    try {
-      // @ts-ignore
-      const asmMod = await import('sql.js/dist/sql-asm.js');
-      const initAsm = asmMod.default || asmMod;
-      return await initAsm();
-    } catch (asmErr) {
-      console.error('Semua inisialisasi SQL.js gagal:', asmErr);
-      throw asmErr;
-    }
   }
 }
 
