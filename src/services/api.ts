@@ -127,7 +127,11 @@ export const api = {
         method: 'DELETE',
         body: JSON.stringify({ actorName }),
       }),
-    getStudents: (id: string) => fetchJson<Student[]>(`${API_BASE}/halaqah/${id}/students`),
+    getStudents: async (id: string): Promise<Student[]> => {
+      const list = await fetchJson<Student[]>(`${API_BASE}/halaqah/${id}/students`);
+      const deletedIds = storageSync.getDeletedStudentIds();
+      return list.filter((s) => !deletedIds.has(s.id));
+    },
   },
 
   // Students (Direct backend database sync)
@@ -150,13 +154,18 @@ export const api = {
       return combined.filter((s) => !deletedIds.has(s.id));
     },
 
-    getDetail: (id: string) =>
-      fetchJson<{
+    getDetail: async (id: string) => {
+      const deletedIds = storageSync.getDeletedStudentIds();
+      if (deletedIds.has(id)) {
+        throw new Error('Santri telah dihapus dari sistem');
+      }
+      return fetchJson<{
         student: Student;
         records: ViolationRecord[];
         positive_records?: PositiveRecord[];
         history: any[];
-      }>(`${API_BASE}/students/${id}`),
+      }>(`${API_BASE}/students/${id}`);
+    },
 
     create: async (data: any) => {
       const res = await fetchJson<{ message: string; studentId: string }>(`${API_BASE}/students`, {

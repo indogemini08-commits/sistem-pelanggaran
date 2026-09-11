@@ -60,6 +60,13 @@ export const storageSync = {
     const created = this.getCreatedStudents().filter((s) => s.id !== id);
     safeSetItem(KEYS.CREATED_STUDENTS, created);
 
+    // Cascade clean locally created records for this student
+    const createdRecs = this.getCreatedRecords().filter((r) => r.student_id !== id);
+    safeSetItem(KEYS.CREATED_RECORDS, createdRecs);
+
+    const createdPosRecs = this.getCreatedPosRecords().filter((r) => r.student_id !== id);
+    safeSetItem(KEYS.CREATED_POS_RECORDS, createdPosRecs);
+
     this.notifyDataChange({ action: 'delete', resource: 'student', id });
   },
 
