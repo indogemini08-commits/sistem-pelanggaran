@@ -468,6 +468,11 @@ export function seedDatabase() {
     );
   }
 
+  seedStudentsIfEmpty();
+  seedKesantrianViolationsIfEmpty();
+  seedNewRolesIfEmpty();
+  seedPositiveActionsIfEmpty();
+
   logAudit({
     userName: 'System Initialization',
     action: 'SEED_DATABASE',
