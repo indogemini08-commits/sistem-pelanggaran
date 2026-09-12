@@ -137,12 +137,15 @@ export const api = {
   // Students (Direct backend database sync)
   students: {
     list: async (): Promise<Student[]> => {
-      const serverList = await fetchJson<Student[]>(`${API_BASE}/students`);
+      let serverList: Student[] = [];
+      try {
+        serverList = await fetchJson<Student[]>(`${API_BASE}/students`);
+      } catch (e) {
+        console.warn('Failed to fetch students from server, using local store:', e);
+      }
       const deletedIds = storageSync.getDeletedStudentIds();
       const createdStudents = storageSync.getCreatedStudents();
-
-      // Reconcile: clean stale localStorage deleted IDs (students already gone from server)
-      storageSync.reconcileDeletedStudentIds(serverList.map((s) => s.id));
+      const updatedStudents = storageSync.getUpdatedStudents();
 
       const existingIds = new Set(serverList.map((s) => s.id));
       const combined = [...serverList];
@@ -154,9 +157,66 @@ export const api = {
         }
       }
 
-      // After reconcile, get fresh (cleaned) deletedIds
-      const freshDeletedIds = storageSync.getDeletedStudentIds();
-      return combined.filter((s) => !freshDeletedIds.has(s.id));
+      // Filter deleted students & apply local updates
+      const activeStudents = combined
+        .filter((s) => !deletedIds.has(s.id))
+        .map((s) => {
+          if (updatedStudents[s.id]) {
+            return { ...s, ...updatedStudents[s.id] };
+          }
+          return s;
+        });
+
+      // Fetch active records and positive records to ensure 100% synchronized points calculation
+      const [allRecords, allPosRecords] = await Promise.all([
+        api.records.list().catch(() => []),
+        api.positiveRecords.list().catch(() => []),
+      ]);
+
+      const activeRecs = allRecords.filter((r) => r.status === 'active');
+      const activePosRecs = allPosRecords.filter((pr) => pr.status === 'active');
+
+      return activeStudents.map((s) => {
+        const studentRecs = activeRecs.filter((r) => r.student_id === s.id);
+        const studentPosRecs = activePosRecs.filter((pr) => pr.student_id === s.id);
+
+        const grossTahfizh = studentRecs
+          .filter((r) => r.division === 'tahfizh')
+          .reduce((sum, r) => sum + Number(r.points_snapshot || 0), 0);
+
+        const grossKesantrian = studentRecs
+          .filter((r) => r.division === 'kesantrian')
+          .reduce((sum, r) => sum + Number(r.points_snapshot || 0), 0);
+
+        const dedTahfizh = studentPosRecs
+          .filter((pr) => pr.division === 'tahfizh')
+          .reduce((sum, pr) => sum + Number(pr.points_deducted || 0), 0);
+
+        const dedKesantrian = studentPosRecs
+          .filter((pr) => pr.division === 'kesantrian')
+          .reduce((sum, pr) => sum + Number(pr.points_deducted || 0), 0);
+
+        const netTahfizh = Math.max(0, grossTahfizh - dedTahfizh);
+        const netKesantrian = Math.max(0, grossKesantrian - dedKesantrian);
+        const netTotal = netTahfizh + netKesantrian;
+
+        return {
+          ...s,
+          total_points: netTotal,
+          tahfizh_points: netTahfizh,
+          kesantrian_points: netKesantrian,
+          gross_total_points: grossTahfizh + grossKesantrian,
+          gross_tahfizh_points: grossTahfizh,
+          gross_kesantrian_points: grossKesantrian,
+          tahfizh_deductions: dedTahfizh,
+          kesantrian_deductions: dedKesantrian,
+          total_deductions: dedTahfizh + dedKesantrian,
+          violation_count: studentRecs.length,
+          tahfizh_violation_count: studentRecs.filter((r) => r.division === 'tahfizh').length,
+          kesantrian_violation_count: studentRecs.filter((r) => r.division === 'kesantrian').length,
+          positive_count: studentPosRecs.length,
+        };
+      });
     },
 
     getDetail: async (id: string) => {
@@ -323,11 +383,18 @@ export const api = {
   records: {
     list: async (params: Record<string, string> = {}): Promise<ViolationRecord[]> => {
       const qs = new URLSearchParams(params).toString();
-      const serverList = await fetchJson<ViolationRecord[]>(`${API_BASE}/records${qs ? '?' + qs : ''}`);
+      let serverList: ViolationRecord[] = [];
+      try {
+        serverList = await fetchJson<ViolationRecord[]>(`${API_BASE}/records${qs ? '?' + qs : ''}`);
+      } catch (e) {
+        console.warn('Failed to fetch records from server, using local store:', e);
+      }
       const deletedRecordIds = storageSync.getDeletedRecordIds();
       const deletedStudentIds = storageSync.getDeletedStudentIds();
       const cancelledRecords = storageSync.getCancelledRecords();
       const createdRecords = storageSync.getCreatedRecords();
+      const createdStudents = storageSync.getCreatedStudents();
+      const studentMap = new Map(createdStudents.map((s) => [s.id, s]));
 
       const existingIds = new Set(serverList.map((r) => r.id));
       const combined: ViolationRecord[] = [...serverList];
@@ -342,6 +409,12 @@ export const api = {
       return combined
         .filter((r) => !deletedRecordIds.has(r.id) && !deletedStudentIds.has(r.student_id))
         .map((r) => {
+          const s = studentMap.get(r.student_id);
+          if (s) {
+            if (!r.student_nis || r.student_nis === '-') r.student_nis = s.student_number;
+            if (!r.student_name || r.student_name === 'Santri') r.student_name = s.name;
+            if (!r.student_class_snapshot || r.student_class_snapshot === '-') r.student_class_snapshot = s.class;
+          }
           if (cancelledRecords[r.id]) {
             return {
               ...r,
@@ -355,8 +428,13 @@ export const api = {
 
     create: async (data: {
       studentId: string;
+      studentName?: string;
+      studentNis?: string;
+      studentClass?: string;
       halaqahId?: string | null;
       violationId: string;
+      violationName?: string;
+      points?: number;
       division?: 'tahfizh' | 'kesantrian';
       supervisorName?: string;
       locationName?: string;
@@ -366,35 +444,42 @@ export const api = {
       evidenceUrl?: string;
       createdBy?: string;
     }) => {
-      const res = await fetchJson<{
-        message: string;
-        recordId: string;
-        studentName: string;
-        violationName: string;
-        division: 'tahfizh' | 'kesantrian';
-        points: number;
-        newTotalPoints: number;
-        tahfizhPoints?: number;
-        kesantrianPoints?: number;
-      }>(`${API_BASE}/records`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
+      let res: any = null;
+      try {
+        res = await fetchJson<{
+          message: string;
+          recordId: string;
+          studentName: string;
+          violationName: string;
+          division: 'tahfizh' | 'kesantrian';
+          points: number;
+          newTotalPoints: number;
+          tahfizhPoints?: number;
+          kesantrianPoints?: number;
+        }>(`${API_BASE}/records`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
+      } catch (e) {
+        console.warn('Backend record creation failed, saving locally:', e);
+      }
 
       const now = new Date();
+      const recordId = res?.recordId || 'rec_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
       const record: ViolationRecord = {
-        id: res.recordId || 'rec_' + Date.now().toString(36),
+        id: recordId,
         student_id: data.studentId,
-        student_name: res.studentName,
-        division: res.division || 'tahfizh',
+        student_name: res?.studentName || data.studentName || 'Santri',
+        student_nis: data.studentNis || '-',
+        division: res?.division || data.division || 'tahfizh',
         halaqah_id: data.halaqahId || null,
-        halaqah_name_snapshot: data.locationName || 'Halaqah',
+        halaqah_name_snapshot: data.locationName || 'Halaqah & Asrama',
         teacher_id: null,
         teacher_name_snapshot: data.supervisorName || data.createdBy || 'Pembina',
         violation_id: data.violationId,
-        violation_name_snapshot: res.violationName,
-        points_snapshot: res.points,
-        student_class_snapshot: '-',
+        violation_name_snapshot: res?.violationName || data.violationName || 'Pelanggaran',
+        points_snapshot: res?.points || data.points || 0,
+        student_class_snapshot: data.studentClass || '-',
         academic_year_snapshot: '2025/2026',
         date: data.date || now.toISOString().split('T')[0],
         time: data.time || now.toTimeString().substring(0, 5),
@@ -406,7 +491,17 @@ export const api = {
       };
 
       storageSync.saveCreatedRecord(record);
-      return res;
+      return {
+        message: 'Pelanggaran berhasil dicatat.',
+        recordId,
+        studentName: record.student_name,
+        violationName: record.violation_name_snapshot,
+        division: record.division,
+        points: record.points_snapshot,
+        newTotalPoints: res?.newTotalPoints ?? record.points_snapshot,
+        tahfizhPoints: res?.tahfizhPoints,
+        kesantrianPoints: res?.kesantrianPoints,
+      };
     },
 
     cancel: async (id: string, cancellationReason: string, actorName?: string) => {
@@ -437,42 +532,165 @@ export const api = {
     },
 
     stats: async (division?: string): Promise<DashboardStats> => {
-      const qs = division && division !== 'all' ? '?division=' + encodeURIComponent(division) : '';
-      const data = await fetchJson<DashboardStats>(`${API_BASE}/records/stats${qs}`);
+      const hasDivisionFilter = division && division !== 'all';
 
-      const deletedStudentIds = storageSync.getDeletedStudentIds();
-      const deletedRecordIds = storageSync.getDeletedRecordIds();
+      // Load all source-of-truth lists (already synced with localStorage & server)
+      const [students, records, positiveRecords, halaqahs, teachers] = await Promise.all([
+        api.students.list().catch(() => []),
+        api.records.list().catch(() => []),
+        api.positiveRecords.list().catch(() => []),
+        api.halaqah.list().catch(() => []),
+        api.teachers.list().catch(() => []),
+      ]);
 
-      // Ensure robust object structure with zero-risk defaults
-      const safeData: DashboardStats = {
-        summary: data?.summary || {
-          totalStudents: 0,
-          totalTeachers: 0,
-          totalHalaqah: 0,
-          totalRecords: 0,
-          totalPoints: 0,
-          todayCount: 0,
-          monthCount: 0,
-          netTotalPoints: 0,
-        },
-        topStudents: Array.isArray(data?.topStudents) ? data.topStudents : [],
-        byCategory: Array.isArray(data?.byCategory) ? data.byCategory : [],
-        pointsByHalaqah: Array.isArray(data?.pointsByHalaqah) ? data.pointsByHalaqah : [],
-        monthlyTrend: Array.isArray(data?.monthlyTrend) ? data.monthlyTrend : [],
-        studentsNeedingAttention: Array.isArray(data?.studentsNeedingAttention) ? data.studentsNeedingAttention : [],
+      const activeRecords = records.filter((r) => r.status === 'active');
+      const scopedRecords = hasDivisionFilter
+        ? activeRecords.filter((r) => r.division === division)
+        : activeRecords;
+
+      const activePosRecords = positiveRecords.filter((pr) => pr.status === 'active');
+      const scopedPosRecords = hasDivisionFilter
+        ? activePosRecords.filter((pr) => pr.division === division)
+        : activePosRecords;
+
+      const today = new Date().toISOString().split('T')[0];
+      const currentMonth = today.substring(0, 7);
+
+      // Tahfizh stats
+      const tahfizhRecords = activeRecords.filter((r) => r.division === 'tahfizh');
+      const tahfizhRecordsCount = tahfizhRecords.length;
+      const tahfizhTotalPoints = tahfizhRecords.reduce((sum, r) => sum + Number(r.points_snapshot || 0), 0);
+
+      // Kesantrian stats
+      const kesantrianRecords = activeRecords.filter((r) => r.division === 'kesantrian');
+      const kesantrianRecordsCount = kesantrianRecords.length;
+      const kesantrianTotalPoints = kesantrianRecords.reduce((sum, r) => sum + Number(r.points_snapshot || 0), 0);
+
+      // Deductions
+      const tahfizhPos = activePosRecords.filter((pr) => pr.division === 'tahfizh');
+      const tahfizhDeductedPoints = tahfizhPos.reduce((sum, pr) => sum + Number(pr.points_deducted || 0), 0);
+
+      const kesantrianPos = activePosRecords.filter((pr) => pr.division === 'kesantrian');
+      const kesantrianDeductedPoints = kesantrianPos.reduce((sum, pr) => sum + Number(pr.points_deducted || 0), 0);
+
+      const totalPositiveRecords = scopedPosRecords.length;
+      const totalPointsDeducted = scopedPosRecords.reduce((sum, pr) => sum + Number(pr.points_deducted || 0), 0);
+
+      const totalRecords = scopedRecords.length;
+      const totalPoints = scopedRecords.reduce((sum, r) => sum + Number(r.points_snapshot || 0), 0);
+      const netTotalPoints = Math.max(0, totalPoints - totalPointsDeducted);
+
+      const todayCount = scopedRecords.filter((r) => r.date === today).length;
+      const monthCount = scopedRecords.filter((r) => r.date && r.date.startsWith(currentMonth)).length;
+
+      // Summary
+      const summary = {
+        totalStudents: students.length,
+        totalTeachers: teachers.length,
+        totalHalaqah: halaqahs.length,
+        totalRecords,
+        totalPoints,
+        todayCount,
+        monthCount,
+        tahfizhRecordsCount,
+        tahfizhTotalPoints,
+        kesantrianRecordsCount,
+        kesantrianTotalPoints,
+        totalPositiveRecords,
+        totalPointsDeducted,
+        tahfizhDeductedPoints,
+        kesantrianDeductedPoints,
+        netTotalPoints,
       };
 
-      if (deletedStudentIds.size > 0) {
-        safeData.topStudents = safeData.topStudents.filter((s) => !deletedStudentIds.has(s.id));
-        safeData.studentsNeedingAttention = safeData.studentsNeedingAttention.filter((s) => !deletedStudentIds.has(s.id));
-        safeData.summary.totalStudents = Math.max(0, safeData.summary.totalStudents - deletedStudentIds.size);
-      }
+      // Top 10 students (students with highest points in current scope)
+      const studentMapPoints = students.map((s) => {
+        const studentRecs = activeRecords.filter((r) => r.student_id === s.id);
+        const studentPosRecs = activePosRecords.filter((pr) => pr.student_id === s.id);
 
-      if (deletedRecordIds.size > 0) {
-        safeData.summary.totalRecords = Math.max(0, safeData.summary.totalRecords - deletedRecordIds.size);
-      }
+        const sTahfizh = studentRecs.filter((r) => r.division === 'tahfizh').reduce((sum, r) => sum + Number(r.points_snapshot || 0), 0);
+        const sKesantrian = studentRecs.filter((r) => r.division === 'kesantrian').reduce((sum, r) => sum + Number(r.points_snapshot || 0), 0);
+        const sDedTahfizh = studentPosRecs.filter((pr) => pr.division === 'tahfizh').reduce((sum, pr) => sum + Number(pr.points_deducted || 0), 0);
+        const sDedKesantrian = studentPosRecs.filter((pr) => pr.division === 'kesantrian').reduce((sum, pr) => sum + Number(pr.points_deducted || 0), 0);
 
-      return safeData;
+        const netT = Math.max(0, sTahfizh - sDedTahfizh);
+        const netK = Math.max(0, sKesantrian - sDedKesantrian);
+        const netTot = hasDivisionFilter ? (division === 'tahfizh' ? netT : netK) : (netT + netK);
+
+        return {
+          id: s.id,
+          name: s.name,
+          student_number: s.student_number,
+          class: s.class,
+          halaqah_name: s.halaqah_name || 'Tanpa Halaqah',
+          total_points: netTot,
+          gross_points: hasDivisionFilter ? (division === 'tahfizh' ? sTahfizh : sKesantrian) : (sTahfizh + sKesantrian),
+          tahfizh_points: netT,
+          kesantrian_points: netK,
+          tahfizh_deductions: sDedTahfizh,
+          kesantrian_deductions: sDedKesantrian,
+          total_deductions: sDedTahfizh + sDedKesantrian,
+          violation_count: hasDivisionFilter
+            ? (division === 'tahfizh'
+                ? studentRecs.filter((r) => r.division === 'tahfizh').length
+                : studentRecs.filter((r) => r.division === 'kesantrian').length)
+            : studentRecs.length,
+        };
+      });
+
+      const topStudents = studentMapPoints
+        .filter((s) => s.total_points > 0 || s.gross_points > 0)
+        .sort((a, b) => b.total_points - a.total_points)
+        .slice(0, 10);
+
+      // By Category
+      const catMap = new Map<string, { category: string; division: string; count: number; points: number }>();
+      for (const r of scopedRecords) {
+        const cat = r.violation_category || 'Kedisiplinan';
+        const div = r.division || 'tahfizh';
+        const key = `${cat}_${div}`;
+        const existing = catMap.get(key) || { category: cat, division: div, count: 0, points: 0 };
+        existing.count += 1;
+        existing.points += Number(r.points_snapshot || 0);
+        catMap.set(key, existing);
+      }
+      const byCategory = Array.from(catMap.values()).sort((a, b) => b.count - a.count);
+
+      // Points by Halaqah
+      const halaqahMap = new Map<string, { halaqah_name: string; violation_count: number; total_points: number }>();
+      for (const r of scopedRecords) {
+        const hName = r.halaqah_name_snapshot || 'Tanpa Halaqah';
+        const existing = halaqahMap.get(hName) || { halaqah_name: hName, violation_count: 0, total_points: 0 };
+        existing.violation_count += 1;
+        existing.total_points += Number(r.points_snapshot || 0);
+        halaqahMap.set(hName, existing);
+      }
+      const pointsByHalaqah = Array.from(halaqahMap.values()).sort((a, b) => b.total_points - a.total_points);
+
+      // Monthly Trend
+      const monthMap = new Map<string, { month: string; count: number; points: number }>();
+      for (const r of scopedRecords) {
+        const m = (r.date || '').substring(0, 7) || currentMonth;
+        const existing = monthMap.get(m) || { month: m, count: 0, points: 0 };
+        existing.count += 1;
+        existing.points += Number(r.points_snapshot || 0);
+        monthMap.set(m, existing);
+      }
+      const monthlyTrend = Array.from(monthMap.values()).sort((a, b) => a.month.localeCompare(b.month)).slice(-6);
+
+      // Students needing attention (total_points >= 20)
+      const studentsNeedingAttention = studentMapPoints
+        .filter((s) => s.total_points >= 20)
+        .sort((a, b) => b.total_points - a.total_points);
+
+      return {
+        summary,
+        topStudents,
+        byCategory,
+        pointsByHalaqah,
+        monthlyTrend,
+        studentsNeedingAttention,
+      };
     },
   },
 
@@ -501,11 +719,18 @@ export const api = {
   positiveRecords: {
     list: async (params: Record<string, string> = {}): Promise<PositiveRecord[]> => {
       const qs = new URLSearchParams(params).toString();
-      const serverList = await fetchJson<PositiveRecord[]>(`${API_BASE}/positive-records${qs ? '?' + qs : ''}`);
+      let serverList: PositiveRecord[] = [];
+      try {
+        serverList = await fetchJson<PositiveRecord[]>(`${API_BASE}/positive-records${qs ? '?' + qs : ''}`);
+      } catch (e) {
+        console.warn('Failed to fetch positive records from server, using local store:', e);
+      }
       const deletedPosIds = storageSync.getDeletedPosRecordIds();
       const deletedStudentIds = storageSync.getDeletedStudentIds();
       const cancelledPosRecords = storageSync.getCancelledPosRecords();
       const createdPosRecords = storageSync.getCreatedPosRecords();
+      const createdStudents = storageSync.getCreatedStudents();
+      const studentMap = new Map(createdStudents.map((s) => [s.id, s]));
 
       const existingIds = new Set(serverList.map((r) => r.id));
       const combined: PositiveRecord[] = [...serverList];
@@ -520,6 +745,12 @@ export const api = {
       return combined
         .filter((r) => !deletedPosIds.has(r.id) && !deletedStudentIds.has(r.student_id))
         .map((r) => {
+          const s = studentMap.get(r.student_id);
+          if (s) {
+            if (!r.student_nis || r.student_nis === '-') r.student_nis = s.student_number;
+            if (!r.student_name || r.student_name === 'Santri') r.student_name = s.name;
+            if (!r.student_class_snapshot || r.student_class_snapshot === '-') r.student_class_snapshot = s.class;
+          }
           if (cancelledPosRecords[r.id]) {
             return {
               ...r,
@@ -533,6 +764,9 @@ export const api = {
 
     create: async (data: {
       studentId: string;
+      studentName?: string;
+      studentNis?: string;
+      studentClass?: string;
       division: 'tahfizh' | 'kesantrian';
       actionId?: string;
       customActionName?: string;
@@ -544,29 +778,36 @@ export const api = {
       notes?: string;
       actorName?: string;
     }) => {
-      const res = await fetchJson<{
-        message: string;
-        recordId: string;
-        pointsDeducted: number;
-      }>(`${API_BASE}/positive-records`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
+      let res: any = null;
+      try {
+        res = await fetchJson<{
+          message: string;
+          recordId: string;
+          pointsDeducted: number;
+        }>(`${API_BASE}/positive-records`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
+      } catch (e) {
+        console.warn('Backend positive record creation failed, saving locally:', e);
+      }
 
       const now = new Date();
+      const recordId = res?.recordId || 'pos_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
       const record: PositiveRecord = {
-        id: res.recordId || 'pos_' + Date.now().toString(36),
+        id: recordId,
         student_id: data.studentId,
-        student_name: 'Santri',
+        student_name: data.studentName || 'Santri',
+        student_nis: data.studentNis || '-',
         division: data.division || 'tahfizh',
         action_id: data.actionId || null,
         action_name_snapshot: data.customActionName || 'Kegiatan Baik',
-        points_deducted: res.pointsDeducted || data.customPoints || 5,
+        points_deducted: res?.pointsDeducted || data.customPoints || 5,
         halaqah_id: null,
         halaqah_name_snapshot: data.locationName || 'Halaqah & Asrama',
         teacher_id: null,
         teacher_name_snapshot: data.supervisorName || data.actorName || 'Pembina',
-        student_class_snapshot: '-',
+        student_class_snapshot: data.studentClass || '-',
         academic_year_snapshot: '2025/2026',
         date: data.date || now.toISOString().split('T')[0],
         time: data.time || now.toTimeString().substring(0, 5),
@@ -577,7 +818,11 @@ export const api = {
       };
 
       storageSync.saveCreatedPosRecord(record);
-      return res;
+      return {
+        message: 'Catatan kebaikan berhasil disimpan',
+        recordId,
+        pointsDeducted: record.points_deducted,
+      };
     },
 
     cancel: async (id: string, reason: string, actorName?: string) => {
@@ -637,15 +882,48 @@ export const api = {
 
   // Portal Orang Tua / Wali Santri (Cek via NIS)
   portal: {
-    getByNis: (nis: string) => {
+    getByNis: async (nis: string) => {
       const cleanNis = encodeURIComponent(nis.trim());
-      return fetchJson<{
-        student: Student;
-        records: ViolationRecord[];
-        positive_records: PositiveRecord[];
-        thresholds: PointThreshold[];
-        settings: SchoolSettings | null;
-      }>(`${API_BASE}/students/portal/${cleanNis}`);
+      try {
+        const res = await fetchJson<{
+          student: Student;
+          records: ViolationRecord[];
+          positive_records: PositiveRecord[];
+          thresholds: PointThreshold[];
+          settings: SchoolSettings | null;
+        }>(`${API_BASE}/students/portal/${cleanNis}`);
+
+        // Check if student was deleted in client store
+        const deletedIds = storageSync.getDeletedStudentIds();
+        if (res && res.student && deletedIds.has(res.student.id)) {
+          throw new Error(`Santri dengan NIS "${nis}" telah dinonaktifkan atau dihapus.`);
+        }
+        return res;
+      } catch (err: any) {
+        // Fallback to client-side synchronized store if server returns 404/error (e.g. newly created student on Vercel)
+        const students = await api.students.list();
+        const found = students.find((s) => s.student_number.trim() === nis.trim());
+        if (!found) {
+          throw err;
+        }
+
+        const [allRecs, allPosRecs, settingsData] = await Promise.all([
+          api.records.list(),
+          api.positiveRecords.list().catch(() => []),
+          api.settings.get().catch(() => ({ settings: null, thresholds: [] })),
+        ]);
+
+        const studentRecs = allRecs.filter((r) => r.student_id === found.id);
+        const studentPosRecs = allPosRecs.filter((pr) => pr.student_id === found.id);
+
+        return {
+          student: found,
+          records: studentRecs,
+          positive_records: studentPosRecs,
+          thresholds: settingsData.thresholds || [],
+          settings: settingsData.settings || null,
+        };
+      }
     },
   },
 };

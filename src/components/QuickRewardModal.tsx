@@ -209,6 +209,9 @@ export const QuickRewardModal: React.FC<QuickRewardModalProps> = ({
 
       const res = await api.positiveRecords.create({
         studentId: selectedStudentId,
+        studentName: studentObj?.name,
+        studentNis: studentObj?.student_number,
+        studentClass: studentObj?.class,
         division,
         actionId: selectedActionId || undefined,
         customActionName: chosenName,

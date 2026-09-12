@@ -61,6 +61,9 @@ router.post('/', (req: Request, res: Response) => {
   try {
     const {
       studentId,
+      studentName,
+      studentNis,
+      studentClass,
       division = 'tahfizh',
       actionId,
       customActionName,
@@ -77,14 +80,29 @@ router.post('/', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Santri wajib dipilih' });
     }
 
-    // 1. Fetch student current info
-    const student = get<any>(`
+    // 1. Fetch student current info (self-healing if student exists on client)
+    let student = get<any>(`
       SELECT s.*, h.name as halaqah_name, h.id as halaqah_id, t.name as teacher_name, t.id as teacher_id
       FROM students s
       LEFT JOIN halaqah h ON h.id = s.halaqah_id
       LEFT JOIN teachers t ON t.id = h.teacher_id
       WHERE s.id = ?
     `, [studentId]);
+
+    if (!student && studentName) {
+      run(
+        `INSERT OR IGNORE INTO students (id, student_number, name, class, gender, academic_year, status)
+         VALUES (?, ?, ?, ?, 'L', '2025/2026', 'active')`,
+        [studentId, studentNis || studentId, studentName, studentClass || '-']
+      );
+      student = get<any>(`
+        SELECT s.*, h.name as halaqah_name, h.id as halaqah_id, t.name as teacher_name, t.id as teacher_id
+        FROM students s
+        LEFT JOIN halaqah h ON h.id = s.halaqah_id
+        LEFT JOIN teachers t ON t.id = h.teacher_id
+        WHERE s.id = ?
+      `, [studentId]);
+    }
 
     if (!student) return res.status(404).json({ error: 'Data santri tidak ditemukan' });
 

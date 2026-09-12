@@ -136,11 +136,16 @@ router.post('/', (req: Request, res: Response) => {
   try {
     const {
       studentId,
+      studentName,
+      studentNis,
+      studentClass,
       halaqahId,
       violationId,
+      violationName,
+      points,
       division,
-      supervisorName,
       locationName,
+      supervisorName,
       date,
       time,
       notes,
@@ -152,14 +157,30 @@ router.post('/', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Santri dan jenis pelanggaran wajib dipilih' });
     }
 
-    // 1. Fetch Student
-    const student = get<any>('SELECT * FROM students WHERE id = ?', [studentId]);
+    // 1. Fetch Student (self-healing for serverless ephemeral instances)
+    let student = get<any>('SELECT * FROM students WHERE id = ?', [studentId]);
+    if (!student && studentName) {
+      run(
+        `INSERT OR IGNORE INTO students (id, student_number, name, class, gender, academic_year, status)
+         VALUES (?, ?, ?, ?, 'L', '2025/2026', 'active')`,
+        [studentId, studentNis || studentId, studentName, studentClass || '-']
+      );
+      student = get<any>('SELECT * FROM students WHERE id = ?', [studentId]);
+    }
     if (!student) {
       return res.status(404).json({ error: 'Santri tidak ditemukan' });
     }
 
     // 2. Fetch Violation Master (and its default points)
-    const violation = get<any>('SELECT * FROM violations WHERE id = ?', [violationId]);
+    let violation = get<any>('SELECT * FROM violations WHERE id = ?', [violationId]);
+    if (!violation && violationName) {
+      run(
+        `INSERT OR IGNORE INTO violations (id, code, name, division, category, description, default_points, status)
+         VALUES (?, ?, ?, ?, 'Kedisiplinan', '', ?, 'active')`,
+        [violationId, 'CUST_' + String(violationId).substring(0, 5), violationName, division || 'tahfizh', Number(points || 5)]
+      );
+      violation = get<any>('SELECT * FROM violations WHERE id = ?', [violationId]);
+    }
     if (!violation) {
       return res.status(404).json({ error: 'Jenis pelanggaran tidak ditemukan' });
     }

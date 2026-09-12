@@ -209,10 +209,20 @@ export const QuickViolationModal: React.FC<QuickViolationModalProps> = ({
 
     setLoading(true);
     try {
+      const studentObj =
+        (division === 'tahfizh' ? halaqahStudents : allStudents).find((s) => s.id === selectedStudentId) ||
+        allStudents.find((s) => s.id === selectedStudentId);
+      const violationObj = violations.find((v) => v.id === selectedViolationId);
+
       const res = await api.records.create({
         studentId: selectedStudentId,
+        studentName: studentObj?.name,
+        studentNis: studentObj?.student_number,
+        studentClass: studentObj?.class,
         halaqahId: division === 'tahfizh' ? selectedHalaqahId : null,
         violationId: selectedViolationId,
+        violationName: violationObj?.name,
+        points: violationObj?.default_points || points,
         division: division,
         locationName: division === 'kesantrian' ? locationName : undefined,
         supervisorName: division === 'kesantrian' ? (supervisorName || currentUser?.name) : undefined,
@@ -223,8 +233,8 @@ export const QuickViolationModal: React.FC<QuickViolationModalProps> = ({
       });
 
       setSuccessData({
-        studentName: res.studentName,
-        violationName: res.violationName,
+        studentName: res.studentName || studentObj?.name || 'Santri',
+        violationName: res.violationName || violationObj?.name || 'Pelanggaran',
         division: res.division || division,
         points: res.points,
         newTotalPoints: res.newTotalPoints,

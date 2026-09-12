@@ -2021,11 +2021,16 @@ router7.post("/", (req, res) => {
   try {
     const {
       studentId,
+      studentName,
+      studentNis,
+      studentClass,
       halaqahId,
       violationId,
+      violationName,
+      points,
       division,
-      supervisorName,
       locationName,
+      supervisorName,
       date,
       time,
       notes,
@@ -2035,11 +2040,27 @@ router7.post("/", (req, res) => {
     if (!studentId || !violationId) {
       return res.status(400).json({ error: "Santri dan jenis pelanggaran wajib dipilih" });
     }
-    const student = get("SELECT * FROM students WHERE id = ?", [studentId]);
+    let student = get("SELECT * FROM students WHERE id = ?", [studentId]);
+    if (!student && studentName) {
+      run(
+        `INSERT OR IGNORE INTO students (id, student_number, name, class, gender, academic_year, status)
+         VALUES (?, ?, ?, ?, 'L', '2025/2026', 'active')`,
+        [studentId, studentNis || studentId, studentName, studentClass || "-"]
+      );
+      student = get("SELECT * FROM students WHERE id = ?", [studentId]);
+    }
     if (!student) {
       return res.status(404).json({ error: "Santri tidak ditemukan" });
     }
-    const violation = get("SELECT * FROM violations WHERE id = ?", [violationId]);
+    let violation = get("SELECT * FROM violations WHERE id = ?", [violationId]);
+    if (!violation && violationName) {
+      run(
+        `INSERT OR IGNORE INTO violations (id, code, name, division, category, description, default_points, status)
+         VALUES (?, ?, ?, ?, 'Kedisiplinan', '', ?, 'active')`,
+        [violationId, "CUST_" + String(violationId).substring(0, 5), violationName, division || "tahfizh", Number(points || 5)]
+      );
+      violation = get("SELECT * FROM violations WHERE id = ?", [violationId]);
+    }
     if (!violation) {
       return res.status(404).json({ error: "Jenis pelanggaran tidak ditemukan" });
     }
@@ -2698,6 +2719,9 @@ router11.post("/", (req, res) => {
   try {
     const {
       studentId,
+      studentName,
+      studentNis,
+      studentClass,
       division = "tahfizh",
       actionId,
       customActionName,
@@ -2712,13 +2736,27 @@ router11.post("/", (req, res) => {
     if (!studentId) {
       return res.status(400).json({ error: "Santri wajib dipilih" });
     }
-    const student = get(`
+    let student = get(`
       SELECT s.*, h.name as halaqah_name, h.id as halaqah_id, t.name as teacher_name, t.id as teacher_id
       FROM students s
       LEFT JOIN halaqah h ON h.id = s.halaqah_id
       LEFT JOIN teachers t ON t.id = h.teacher_id
       WHERE s.id = ?
     `, [studentId]);
+    if (!student && studentName) {
+      run(
+        `INSERT OR IGNORE INTO students (id, student_number, name, class, gender, academic_year, status)
+         VALUES (?, ?, ?, ?, 'L', '2025/2026', 'active')`,
+        [studentId, studentNis || studentId, studentName, studentClass || "-"]
+      );
+      student = get(`
+        SELECT s.*, h.name as halaqah_name, h.id as halaqah_id, t.name as teacher_name, t.id as teacher_id
+        FROM students s
+        LEFT JOIN halaqah h ON h.id = s.halaqah_id
+        LEFT JOIN teachers t ON t.id = h.teacher_id
+        WHERE s.id = ?
+      `, [studentId]);
+    }
     if (!student) return res.status(404).json({ error: "Data santri tidak ditemukan" });
     let actionName = customActionName || "Kegiatan Baik / Prestasi";
     let pointsDeducted = Number(customPoints) || 5;
