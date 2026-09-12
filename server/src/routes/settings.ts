@@ -4,8 +4,9 @@ import { query, get, run, logAudit, persistDb } from '../db/database';
 const router = Router();
 
 // GET settings & thresholds
-router.get('/', (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
+    let shouldPersist = false;
     let settings = get<any>('SELECT * FROM school_settings WHERE id = "settings_default"');
     if (!settings) {
       settings = {
@@ -24,6 +25,7 @@ router.get('/', (req: Request, res: Response) => {
          VALUES ('settings_default', ?, ?, ?, ?, ?, ?, ?, ?)`,
         [settings.app_name, settings.school_name, settings.address, settings.phone, settings.email, settings.logo_url, settings.kop_surat_text, settings.current_academic_year]
       );
+      shouldPersist = true;
     }
 
     let thresholds = query<any>('SELECT * FROM point_thresholds ORDER BY sort_order ASC');
@@ -43,6 +45,11 @@ router.get('/', (req: Request, res: Response) => {
         );
       }
       thresholds = query<any>('SELECT * FROM point_thresholds ORDER BY sort_order ASC');
+      shouldPersist = true;
+    }
+
+    if (shouldPersist) {
+      await persistDb();
     }
 
     return res.json({

@@ -2858,8 +2858,9 @@ var records_default = router7;
 // server/src/routes/settings.ts
 import { Router as Router8 } from "express";
 var router8 = Router8();
-router8.get("/", (req, res) => {
+router8.get("/", async (req, res) => {
   try {
+    let shouldPersist = false;
     let settings = get('SELECT * FROM school_settings WHERE id = "settings_default"');
     if (!settings) {
       settings = {
@@ -2878,6 +2879,7 @@ router8.get("/", (req, res) => {
          VALUES ('settings_default', ?, ?, ?, ?, ?, ?, ?, ?)`,
         [settings.app_name, settings.school_name, settings.address, settings.phone, settings.email, settings.logo_url, settings.kop_surat_text, settings.current_academic_year]
       );
+      shouldPersist = true;
     }
     let thresholds = query("SELECT * FROM point_thresholds ORDER BY sort_order ASC");
     if (!thresholds || thresholds.length === 0) {
@@ -2896,6 +2898,10 @@ router8.get("/", (req, res) => {
         );
       }
       thresholds = query("SELECT * FROM point_thresholds ORDER BY sort_order ASC");
+      shouldPersist = true;
+    }
+    if (shouldPersist) {
+      await persistDb();
     }
     return res.json({
       settings,
