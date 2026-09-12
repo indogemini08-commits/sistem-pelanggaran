@@ -1173,7 +1173,8 @@ function seedDatabase() {
     tableName: "all",
     newData: { status: "Database berhasil diinisialisasi dengan data awal realistis" }
   });
-  console.log("Seeding selesai!");
+  persistDb();
+  console.log("Seeding selesai dan tersimpan ke cloud persistence!");
 }
 
 // server/src/routes/auth.ts

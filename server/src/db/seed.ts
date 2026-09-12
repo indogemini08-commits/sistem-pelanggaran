@@ -1,4 +1,4 @@
-import { query, run, logAudit, getTombstones } from './database';
+import { query, run, logAudit, getTombstones, persistDb } from './database';
 
 export function seedStudentsIfEmpty() {
   const userCount = query<{ count: number }>('SELECT COUNT(*) as count FROM users')[0]?.count || 0;
@@ -518,5 +518,6 @@ export function seedDatabase() {
     newData: { status: 'Database berhasil diinisialisasi dengan data awal realistis' },
   });
 
-  console.log('Seeding selesai!');
+  persistDb();
+  console.log('Seeding selesai dan tersimpan ke cloud persistence!');
 }
