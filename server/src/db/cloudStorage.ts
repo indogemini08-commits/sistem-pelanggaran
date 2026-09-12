@@ -59,9 +59,12 @@ export async function loadCloudSnapshot(): Promise<any | null> {
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
       `;
-      const rows = await sql`SELECT data FROM imbs_snapshots WHERE id = 'master_snapshot' LIMIT 1;`;
+      const rows = await sql`SELECT data, updated_at FROM imbs_snapshots WHERE id = 'master_snapshot' LIMIT 1;`;
       if (rows && rows.length > 0 && rows[0].data) {
         console.log('[CloudStorage] Snapshot berhasil dimuat dari PostgreSQL / Neon.');
+        if (rows[0].updated_at) {
+          localSnapshotTimestamp = new Date(rows[0].updated_at).toISOString();
+        }
         return rows[0].data;
       }
     } catch (err: any) {
@@ -111,6 +114,39 @@ export async function loadCloudSnapshot(): Promise<any | null> {
   return null;
 }
 
+let localSnapshotTimestamp: string | null = null;
+let lastCheckTime = 0;
+
+export async function checkAndSyncCloudSnapshot(importCallback: (data: any) => void): Promise<void> {
+  const providerInfo = getActiveCloudProvider();
+  if (providerInfo.provider !== 'postgres') return;
+
+  const now = Date.now();
+  if (now - lastCheckTime < 1500) return;
+  lastCheckTime = now;
+
+  try {
+    const dbUrl = (process.env.POSTGRES_URL || process.env.DATABASE_URL)!;
+    const sql = neon(dbUrl);
+    const rows = await sql`SELECT updated_at FROM imbs_snapshots WHERE id = 'master_snapshot' LIMIT 1;`;
+    if (rows && rows.length > 0 && rows[0].updated_at) {
+      const remoteTime = new Date(rows[0].updated_at).toISOString();
+      if (localSnapshotTimestamp && remoteTime !== localSnapshotTimestamp) {
+        console.log(`[CloudStorage] Remote snapshot is newer (${remoteTime} vs ${localSnapshotTimestamp}), syncing container...`);
+        const fullRows = await sql`SELECT data, updated_at FROM imbs_snapshots WHERE id = 'master_snapshot' LIMIT 1;`;
+        if (fullRows && fullRows.length > 0 && fullRows[0].data) {
+          importCallback(fullRows[0].data);
+          localSnapshotTimestamp = new Date(fullRows[0].updated_at).toISOString();
+        }
+      } else if (!localSnapshotTimestamp) {
+        localSnapshotTimestamp = remoteTime;
+      }
+    }
+  } catch (err: any) {
+    // Non-blocking
+  }
+}
+
 // Save database snapshot to configured cloud provider
 let isSaving = false;
 let pendingSave: any = null;
@@ -134,11 +170,15 @@ export async function saveCloudSnapshot(snapshot: any): Promise<boolean> {
       const dbUrl = (process.env.POSTGRES_URL || process.env.DATABASE_URL)!;
       const sql = neon(dbUrl);
       const dataStr = JSON.stringify(snapshot);
-      await sql`
+      const res = await sql`
         INSERT INTO imbs_snapshots (id, data, updated_at)
         VALUES ('master_snapshot', ${dataStr}::jsonb, NOW())
-        ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW();
+        ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+        RETURNING updated_at;
       `;
+      if (res && res.length > 0 && res[0].updated_at) {
+        localSnapshotTimestamp = new Date(res[0].updated_at).toISOString();
+      }
       console.log('[CloudStorage] Snapshot berhasil disimpan ke PostgreSQL / Neon.');
       return true;
     }

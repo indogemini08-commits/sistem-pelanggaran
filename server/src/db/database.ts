@@ -248,17 +248,19 @@ export function importDatabaseState(snapshot: Partial<DatabaseSnapshot>): void {
 
   for (const t of tables) {
     const rows = (snapshot as any)[t];
-    if (Array.isArray(rows) && rows.length > 0) {
+    if (Array.isArray(rows)) {
       try {
         db.run(`DELETE FROM ${t};`);
-        const cols = Object.keys(rows[0]);
-        const placeholders = cols.map(() => '?').join(',');
-        const sql = `INSERT INTO ${t} (${cols.join(',')}) VALUES (${placeholders});`;
-        const stmt = db.prepare(sql);
-        for (const row of rows) {
-          stmt.run(cols.map((col) => row[col]));
+        if (rows.length > 0) {
+          const cols = Object.keys(rows[0]);
+          const placeholders = cols.map(() => '?').join(',');
+          const sql = `INSERT INTO ${t} (${cols.join(',')}) VALUES (${placeholders});`;
+          const stmt = db.prepare(sql);
+          for (const row of rows) {
+            stmt.run(cols.map((col) => row[col]));
+          }
+          stmt.free();
         }
-        stmt.free();
       } catch (err) {
         console.warn(`Gagal mengimpor tabel ${t}:`, err);
       }
@@ -287,10 +289,10 @@ export function importDatabaseState(snapshot: Partial<DatabaseSnapshot>): void {
   } catch (e) {}
 
   db.run('PRAGMA foreign_keys = ON;');
-  persistDb();
+  persistDb(false);
 }
 
-export function persistDb() {
+export function persistDb(syncToCloud = true) {
   if (!db) return;
   try {
     const data = db.export();
@@ -299,6 +301,8 @@ export function persistDb() {
   } catch (err) {
     console.error('Error saat menyimpan database ke disk:', err);
   }
+
+  if (!syncToCloud) return;
 
   // Asynchronously push snapshot to cloud storage if configured
   try {

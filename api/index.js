@@ -233,9 +233,12 @@ async function loadCloudSnapshot() {
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
       `;
-      const rows = await sql`SELECT data FROM imbs_snapshots WHERE id = 'master_snapshot' LIMIT 1;`;
+      const rows = await sql`SELECT data, updated_at FROM imbs_snapshots WHERE id = 'master_snapshot' LIMIT 1;`;
       if (rows && rows.length > 0 && rows[0].data) {
         console.log("[CloudStorage] Snapshot berhasil dimuat dari PostgreSQL / Neon.");
+        if (rows[0].updated_at) {
+          localSnapshotTimestamp = new Date(rows[0].updated_at).toISOString();
+        }
         return rows[0].data;
       }
     } catch (err) {
@@ -279,6 +282,34 @@ async function loadCloudSnapshot() {
   }
   return null;
 }
+var localSnapshotTimestamp = null;
+var lastCheckTime = 0;
+async function checkAndSyncCloudSnapshot(importCallback) {
+  const providerInfo = getActiveCloudProvider();
+  if (providerInfo.provider !== "postgres") return;
+  const now = Date.now();
+  if (now - lastCheckTime < 1500) return;
+  lastCheckTime = now;
+  try {
+    const dbUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+    const sql = neon(dbUrl);
+    const rows = await sql`SELECT updated_at FROM imbs_snapshots WHERE id = 'master_snapshot' LIMIT 1;`;
+    if (rows && rows.length > 0 && rows[0].updated_at) {
+      const remoteTime = new Date(rows[0].updated_at).toISOString();
+      if (localSnapshotTimestamp && remoteTime !== localSnapshotTimestamp) {
+        console.log(`[CloudStorage] Remote snapshot is newer (${remoteTime} vs ${localSnapshotTimestamp}), syncing container...`);
+        const fullRows = await sql`SELECT data, updated_at FROM imbs_snapshots WHERE id = 'master_snapshot' LIMIT 1;`;
+        if (fullRows && fullRows.length > 0 && fullRows[0].data) {
+          importCallback(fullRows[0].data);
+          localSnapshotTimestamp = new Date(fullRows[0].updated_at).toISOString();
+        }
+      } else if (!localSnapshotTimestamp) {
+        localSnapshotTimestamp = remoteTime;
+      }
+    }
+  } catch (err) {
+  }
+}
 var isSaving = false;
 var pendingSave = null;
 async function saveCloudSnapshot(snapshot) {
@@ -296,11 +327,15 @@ async function saveCloudSnapshot(snapshot) {
       const dbUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
       const sql = neon(dbUrl);
       const dataStr = JSON.stringify(snapshot);
-      await sql`
+      const res = await sql`
         INSERT INTO imbs_snapshots (id, data, updated_at)
         VALUES ('master_snapshot', ${dataStr}::jsonb, NOW())
-        ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW();
+        ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+        RETURNING updated_at;
       `;
+      if (res && res.length > 0 && res[0].updated_at) {
+        localSnapshotTimestamp = new Date(res[0].updated_at).toISOString();
+      }
       console.log("[CloudStorage] Snapshot berhasil disimpan ke PostgreSQL / Neon.");
       return true;
     }
@@ -547,17 +582,19 @@ function importDatabaseState(snapshot) {
   db.run("PRAGMA foreign_keys = OFF;");
   for (const t of tables) {
     const rows = snapshot[t];
-    if (Array.isArray(rows) && rows.length > 0) {
+    if (Array.isArray(rows)) {
       try {
         db.run(`DELETE FROM ${t};`);
-        const cols = Object.keys(rows[0]);
-        const placeholders = cols.map(() => "?").join(",");
-        const sql = `INSERT INTO ${t} (${cols.join(",")}) VALUES (${placeholders});`;
-        const stmt = db.prepare(sql);
-        for (const row of rows) {
-          stmt.run(cols.map((col) => row[col]));
+        if (rows.length > 0) {
+          const cols = Object.keys(rows[0]);
+          const placeholders = cols.map(() => "?").join(",");
+          const sql = `INSERT INTO ${t} (${cols.join(",")}) VALUES (${placeholders});`;
+          const stmt = db.prepare(sql);
+          for (const row of rows) {
+            stmt.run(cols.map((col) => row[col]));
+          }
+          stmt.free();
         }
-        stmt.free();
       } catch (err) {
         console.warn(`Gagal mengimpor tabel ${t}:`, err);
       }
@@ -583,9 +620,9 @@ function importDatabaseState(snapshot) {
   } catch (e) {
   }
   db.run("PRAGMA foreign_keys = ON;");
-  persistDb();
+  persistDb(false);
 }
-function persistDb() {
+function persistDb(syncToCloud = true) {
   if (!db) return;
   try {
     const data = db.export();
@@ -594,6 +631,7 @@ function persistDb() {
   } catch (err) {
     console.error("Error saat menyimpan database ke disk:", err);
   }
+  if (!syncToCloud) return;
   try {
     const state = exportDatabaseState();
     saveCloudSnapshot(state).catch((e) => {
@@ -3576,7 +3614,24 @@ router12.post("/state", async (req, res) => {
     });
   } catch (err) {
     console.error("Error in POST /api/sync/state:", err);
-    res.status(500).json({ error: err?.message || "Gagal memproses sinkronisasi" });
+    return res.status(500).json({ error: err?.message || "Gagal memproses sinkronisasi" });
+  }
+});
+router12.post("/reset", (req, res) => {
+  try {
+    const { actorName = "Admin" } = req.body || {};
+    run("DELETE FROM tombstones;");
+    seedDatabase();
+    persistDb();
+    console.log(`[SYNC_RESET] Database berhasil di-reset oleh ${actorName}`);
+    return res.json({
+      success: true,
+      message: "Database berhasil di-reset ke data awal dan disinkronkan ke cloud persistence",
+      state: exportDatabaseState()
+    });
+  } catch (err) {
+    console.error("Error in POST /api/sync/reset:", err);
+    return res.status(500).json({ error: err?.message || "Gagal mereset database" });
   }
 });
 var sync_default = router12;
@@ -3615,6 +3670,7 @@ async function ensureDbInitialized() {
 app.use(async (req, res, next) => {
   try {
     await ensureDbInitialized();
+    await checkAndSyncCloudSnapshot(importDatabaseState);
     next();
   } catch (err) {
     console.error("Database initialization error:", err);

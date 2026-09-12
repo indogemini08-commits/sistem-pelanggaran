@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { getDb, importDatabaseState } from './db/database';
 import { seedDatabase } from './db/seed';
-import { loadCloudSnapshot } from './db/cloudStorage';
+import { loadCloudSnapshot, checkAndSyncCloudSnapshot } from './db/cloudStorage';
 
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
@@ -57,6 +57,7 @@ export async function ensureDbInitialized(): Promise<void> {
 app.use(async (req, res, next) => {
   try {
     await ensureDbInitialized();
+    await checkAndSyncCloudSnapshot(importDatabaseState);
     next();
   } catch (err: any) {
     console.error('Database initialization error:', err);

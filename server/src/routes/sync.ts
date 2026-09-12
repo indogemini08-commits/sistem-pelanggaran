@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { query, get, run, persistDb, exportDatabaseState, importDatabaseState, addTombstone } from '../db/database';
 import { getActiveCloudProvider, loadCloudSnapshot, saveCloudSnapshot } from '../db/cloudStorage';
+import { seedDatabase } from '../db/seed';
 
 const router = Router();
 
@@ -331,7 +332,26 @@ router.post('/state', async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error('Error in POST /api/sync/state:', err);
-    res.status(500).json({ error: err?.message || 'Gagal memproses sinkronisasi' });
+    return res.status(500).json({ error: err?.message || 'Gagal memproses sinkronisasi' });
+  }
+});
+
+// POST /api/sync/reset - Resets database to default seed state across SQLite and cloud persistence
+router.post('/reset', (req: Request, res: Response) => {
+  try {
+    const { actorName = 'Admin' } = req.body || {};
+    run('DELETE FROM tombstones;');
+    seedDatabase();
+    persistDb();
+    console.log(`[SYNC_RESET] Database berhasil di-reset oleh ${actorName}`);
+    return res.json({
+      success: true,
+      message: 'Database berhasil di-reset ke data awal dan disinkronkan ke cloud persistence',
+      state: exportDatabaseState(),
+    });
+  } catch (err: any) {
+    console.error('Error in POST /api/sync/reset:', err);
+    return res.status(500).json({ error: err?.message || 'Gagal mereset database' });
   }
 });
 
