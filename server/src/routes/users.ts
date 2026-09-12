@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query, get, run, logAudit } from '../db/database';
+import { query, get, run, logAudit, persistDb } from '../db/database';
 
 const router = Router();
 
@@ -28,9 +28,9 @@ router.post('/', (req: Request, res: Response) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const existing = get<any>('SELECT id FROM users WHERE email = ?', [cleanEmail]);
+    const existing = get<any>('SELECT id FROM users WHERE LOWER(email) = ?', [cleanEmail]);
     if (existing) {
-      return res.status(400).json({ error: 'Email sudah terdaftar untuk pengguna lain' });
+      return res.status(400).json({ error: 'Email / Username sudah terdaftar untuk pengguna lain' });
     }
 
     const userId = 'usr_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
@@ -50,15 +50,29 @@ router.post('/', (req: Request, res: Response) => {
       );
     }
 
+    // Persist immediately to disk
+    persistDb();
+
     logAudit({
       userName: actorName,
       action: 'CREATE_USER',
       tableName: 'users',
       recordId: userId,
-      newData: { name, email: cleanEmail, role, status },
+      newData: { name: name.trim(), email: cleanEmail, role, status },
     });
 
-    return res.status(201).json({ message: 'Pengguna berhasil ditambahkan', userId });
+    return res.status(201).json({
+      message: 'Pengguna berhasil ditambahkan',
+      userId,
+      user: {
+        id: userId,
+        name: name.trim(),
+        email: cleanEmail,
+        role,
+        status,
+        created_at: new Date().toISOString(),
+      },
+    });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -75,8 +89,8 @@ router.put('/:id', (req: Request, res: Response) => {
 
     const cleanEmail = email ? email.trim().toLowerCase() : oldUser.email;
     if (cleanEmail !== oldUser.email) {
-      const conflict = get<any>('SELECT id FROM users WHERE email = ? AND id != ?', [cleanEmail, id]);
-      if (conflict) return res.status(400).json({ error: 'Email sudah digunakan pengguna lain' });
+      const conflict = get<any>('SELECT id FROM users WHERE LOWER(email) = ? AND id != ?', [cleanEmail, id]);
+      if (conflict) return res.status(400).json({ error: 'Email / Username sudah digunakan pengguna lain' });
     }
 
     const updatedPass = password ? password : oldUser.password_hash;
@@ -102,6 +116,9 @@ router.put('/:id', (req: Request, res: Response) => {
       }
     }
 
+    // Persist immediately to disk
+    persistDb();
+
     logAudit({
       userName: actorName,
       action: 'UPDATE_USER',
@@ -111,7 +128,17 @@ router.put('/:id', (req: Request, res: Response) => {
       newData: { name: updatedName, email: cleanEmail, role: updatedRole, status: updatedStatus },
     });
 
-    return res.json({ message: 'Data pengguna berhasil diperbarui' });
+    return res.json({
+      message: 'Data pengguna berhasil diperbarui',
+      user: {
+        id,
+        name: updatedName,
+        email: cleanEmail,
+        role: updatedRole,
+        status: updatedStatus,
+        created_at: oldUser.created_at,
+      },
+    });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -139,6 +166,9 @@ router.delete('/:id', (req: Request, res: Response) => {
     // Set teachers user_id to NULL
     run('UPDATE teachers SET user_id = NULL WHERE user_id = ?', [id]);
     run('DELETE FROM users WHERE id = ?', [id]);
+
+    // Persist immediately to disk
+    persistDb();
 
     logAudit({
       userName: actorName,

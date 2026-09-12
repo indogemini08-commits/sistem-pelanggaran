@@ -75,6 +75,14 @@ export function App() {
     setCurrentTab('dashboard');
   };
 
+  const handleUserUpdated = (updatedUser: User) => {
+    setCurrentUser(updatedUser);
+    localStorage.setItem('halaqah_user', JSON.stringify(updatedUser));
+    if (sessionStorage.getItem('halaqah_user')) {
+      sessionStorage.setItem('halaqah_user', JSON.stringify(updatedUser));
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('halaqah_user');
     sessionStorage.removeItem('halaqah_user');
@@ -257,7 +265,10 @@ export function App() {
           )}
 
           {currentTab === 'users' && (
-            <UserManagementPage currentUser={currentUser} />
+            <UserManagementPage
+              currentUser={currentUser}
+              onUserUpdated={handleUserUpdated}
+            />
           )}
 
           {currentTab === 'settings' && (

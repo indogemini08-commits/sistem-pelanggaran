@@ -14,11 +14,9 @@ import {
   PhoneCall,
   Clock,
   Award,
-  Zap,
-  Check,
   ShieldAlert,
+  Zap,
   GraduationCap,
-  Building2,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { User as UserType, SchoolSettings } from '../types';
@@ -27,17 +25,6 @@ interface LoginProps {
   onLoginSuccess: (user: UserType) => void;
   settings: SchoolSettings | null;
   onOpenParentPortal?: () => void;
-}
-
-interface DemoAccount {
-  roleName: string;
-  badge: string;
-  badgeColor: string;
-  name: string;
-  email: string;
-  pass: string;
-  desc: string;
-  icon: React.ElementType;
 }
 
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess, settings, onOpenParentPortal }) => {
@@ -49,68 +36,13 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, settings, onOpenPa
   const [errorMsg, setErrorMsg] = useState('');
   const [capsLockOn, setCapsLockOn] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
-  const [selectedDemo, setSelectedDemo] = useState<string | null>(null);
-
-  // Quick Demo Accounts List
-  const demoAccounts: DemoAccount[] = [
-    {
-      roleName: 'Admin',
-      badge: 'Admin Utama',
-      badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
-      name: 'Ustadz Fakhrur Rodhi, S.H',
-      email: 'admin@pesantren.id',
-      pass: 'admin123',
-      desc: 'Akses penuh sistem, master data & laporan',
-      icon: ShieldCheck,
-    },
-    {
-      roleName: 'Koor Tahfizh',
-      badge: 'Koordinator Tahfizh',
-      badgeColor: 'bg-blue-100 text-blue-800 border-blue-300',
-      name: 'Ustadz Ridwan, Lc',
-      email: 'koordinator@pesantren.id',
-      pass: 'koor123',
-      desc: 'Monitoring seluruh halaqah & aturan tahfizh',
-      icon: Award,
-    },
-    {
-      roleName: 'Kp. Kesantrian',
-      badge: 'Kepala Kesantrian',
-      badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-300',
-      name: 'Ustadz Zulkifli, S.Pd.I',
-      email: 'kesantrian@pesantren.id',
-      pass: 'kesantrian123',
-      desc: 'Monitoring asrama & kedisiplinan santri',
-      icon: Building2,
-    },
-    {
-      roleName: 'Muhafizh',
-      badge: 'Guru Halaqah',
-      badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
-      name: 'Ustadz Ansarullah',
-      email: 'ahmad@pesantren.id',
-      pass: 'ahmad123',
-      desc: 'Input poin halaqah & pemantauan santri',
-      icon: GraduationCap,
-    },
-    {
-      roleName: 'Guru Pengajar',
-      badge: 'Guru Kelas / Asatidz',
-      badgeColor: 'bg-teal-100 text-teal-800 border-teal-300',
-      name: 'Ustadz Herman, S.Pd',
-      email: 'guru@pesantren.id',
-      pass: 'guru123',
-      desc: 'Input kedisiplinan & pemantauan santri',
-      icon: BookOpen,
-    },
-  ];
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
     if (!email || !password) {
-      setErrorMsg('Silakan masukkan email dan kata sandi Anda.');
+      setErrorMsg('Silakan masukkan email/username dan kata sandi Anda.');
       return;
     }
 
@@ -124,17 +56,10 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, settings, onOpenPa
       }
       onLoginSuccess(res.user);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Email atau kata sandi tidak cocok dengan akun terdaftar.');
+      setErrorMsg(err.message || 'Email/username atau kata sandi tidak cocok dengan akun terdaftar.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSelectDemo = (acc: DemoAccount) => {
-    setEmail(acc.email);
-    setPassword(acc.pass);
-    setSelectedDemo(acc.email);
-    setErrorMsg('');
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -373,12 +298,13 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, settings, onOpenPa
                         <Mail className="w-4 h-4" />
                       </div>
                       <input
-                        type="email"
+                        type="text"
+                        inputMode="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="contoh: ustadz@pesantren.id"
+                        placeholder="contoh: imbs@aldri atau email pengguna"
                         required
-                        autoComplete="email"
+                        autoComplete="username"
                         className="block w-full pl-10 pr-4 py-3 text-sm bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder:text-slate-400 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all shadow-sm"
                       />
                     </div>
@@ -475,55 +401,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, settings, onOpenPa
                   </button>
                 </form>
 
-                {/* 1-Click Fast Demo Switcher (High Utility for Evaluation) */}
-                <div className="mt-6 pt-5 border-t border-slate-100">
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                      1-Klik Akun Demo Pengujian:
-                    </p>
-                    <span className="text-[10px] font-semibold text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full">
-                      Klik untuk isi
-                    </span>
-                  </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {demoAccounts.map((acc) => {
-                      const IconComp = acc.icon;
-                      const isSelected = selectedDemo === acc.email;
-                      return (
-                        <button
-                          key={acc.email}
-                          type="button"
-                          onClick={() => handleSelectDemo(acc)}
-                          className={`p-2.5 rounded-xl border text-left transition-all duration-150 flex flex-col justify-between group cursor-pointer ${
-                            isSelected
-                              ? 'bg-brand-50 border-brand-500 ring-2 ring-brand-400/20 shadow-sm'
-                              : 'bg-slate-50/80 hover:bg-slate-100/90 border-slate-200/80 hover:border-slate-300'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between mb-1.5">
-                            <div className={`p-1 rounded-md ${acc.badgeColor} border`}>
-                              <IconComp className="w-3.5 h-3.5" />
-                            </div>
-                            {isSelected && (
-                              <span className="w-4 h-4 rounded-full bg-brand-600 text-white flex items-center justify-center">
-                                <Check className="w-2.5 h-2.5" />
-                              </span>
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold text-slate-800 truncate">
-                              {acc.roleName}
-                            </p>
-                            <p className="text-[10px] text-slate-500 truncate">
-                              {acc.name.split(',')[0]}
-                            </p>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
 
                 {/* Footer status within card */}
                 <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">

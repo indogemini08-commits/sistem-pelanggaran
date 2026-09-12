@@ -1,7 +1,7 @@
 // Client-Side Persistent Storage & Synchronization Manager
 // Solves Vercel Serverless ephemeral statelessness so deleted/created data persists across page reloads.
 
-import { Student, ViolationRecord, PositiveRecord } from '../types';
+import { Student, ViolationRecord, PositiveRecord, User } from '../types';
 
 const KEYS = {
   DELETED_STUDENTS: 'imbs_deleted_student_ids',
@@ -18,6 +18,10 @@ const KEYS = {
   DELETED_POS_RECORDS: 'imbs_deleted_pos_record_ids',
   CANCELLED_POS_RECORDS: 'imbs_cancelled_pos_records',
   CREATED_POS_RECORDS: 'imbs_created_pos_records',
+
+  DELETED_USERS: 'imbs_deleted_user_ids',
+  CREATED_USERS: 'imbs_created_users',
+  UPDATED_USERS: 'imbs_updated_users',
 };
 
 
@@ -210,6 +214,62 @@ export const storageSync = {
     set.add(id);
     safeSetItem(KEYS.DELETED_VIOLATIONS, Array.from(set));
     this.notifyDataChange({ action: 'delete', resource: 'violation', id });
+  },
+
+  // === USERS ===
+  getDeletedUserIds(): Set<string> {
+    const arr = safeGetItem<string[]>(KEYS.DELETED_USERS, []);
+    return new Set(arr);
+  },
+
+  addDeletedUserId(id: string) {
+    const set = this.getDeletedUserIds();
+    set.add(id);
+    safeSetItem(KEYS.DELETED_USERS, Array.from(set));
+
+    // Remove from created list if locally created
+    const created = this.getCreatedUsers().filter((u) => u.id !== id);
+    safeSetItem(KEYS.CREATED_USERS, created);
+
+    // Remove from updated list
+    const updated = this.getUpdatedUsers();
+    delete updated[id];
+    safeSetItem(KEYS.UPDATED_USERS, updated);
+
+    this.notifyDataChange({ action: 'delete', resource: 'user', id });
+  },
+
+  getCreatedUsers(): User[] {
+    return safeGetItem<User[]>(KEYS.CREATED_USERS, []);
+  },
+
+  saveCreatedUser(user: User) {
+    const list = this.getCreatedUsers().filter((u) => u.id !== user.id);
+    list.unshift(user);
+    safeSetItem(KEYS.CREATED_USERS, list);
+
+    const delSet = this.getDeletedUserIds();
+    if (delSet.has(user.id)) {
+      delSet.delete(user.id);
+      safeSetItem(KEYS.DELETED_USERS, Array.from(delSet));
+    }
+    this.notifyDataChange({ action: 'create', resource: 'user', id: user.id });
+  },
+
+  getUpdatedUsers(): Record<string, Partial<User>> {
+    return safeGetItem<Record<string, Partial<User>>>(KEYS.UPDATED_USERS, {});
+  },
+
+  saveUpdatedUser(id: string, updates: Partial<User>) {
+    const map = this.getUpdatedUsers();
+    map[id] = { ...(map[id] || {}), ...updates };
+    safeSetItem(KEYS.UPDATED_USERS, map);
+
+    // Also update in created users if present
+    const created = this.getCreatedUsers().map((u) => (u.id === id ? { ...u, ...updates } : u));
+    safeSetItem(KEYS.CREATED_USERS, created);
+
+    this.notifyDataChange({ action: 'update', resource: 'user', id });
   },
 
   // === RESET TO FACTORY DEMO ===

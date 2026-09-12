@@ -24,13 +24,16 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 
 interface UserManagementPageProps {
   currentUser: User | null;
+  onUserUpdated?: (user: User) => void;
 }
 
 export const UserManagementPage: React.FC<UserManagementPageProps> = ({
   currentUser,
+  onUserUpdated,
 }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [successMsg, setSuccessMsg] = useState<string>('');
 
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
@@ -93,16 +96,19 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
     e.preventDefault();
     setFormError('');
 
-    if (!formName || !formEmail || !formPassword) {
-      setFormError('Nama, email, dan password wajib diisi');
+    const cleanName = formName.trim();
+    const cleanEmail = formEmail.trim().toLowerCase();
+
+    if (!cleanName || !cleanEmail || !formPassword) {
+      setFormError('Nama, email/username, dan kata sandi wajib diisi');
       return;
     }
 
     setFormSubmitting(true);
     try {
       await api.users.create({
-        name: formName,
-        email: formEmail,
+        name: cleanName,
+        email: cleanEmail,
         password: formPassword,
         role: formRole,
         status: formStatus,
@@ -110,6 +116,8 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
         actorName: currentUser?.name || 'Admin',
       });
       setIsAddModalOpen(false);
+      setSuccessMsg(`Akun "${cleanName}" (${cleanEmail}) berhasil ditambahkan.`);
+      setTimeout(() => setSuccessMsg(''), 4000);
       await loadUsers();
     } catch (err: any) {
       setFormError(err.message || 'Gagal menambahkan akun');
@@ -123,22 +131,55 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
     if (!userToEdit) return;
     setFormError('');
 
-    if (!formName || !formEmail) {
-      setFormError('Nama dan email wajib diisi');
+    const cleanName = formName.trim();
+    const cleanEmail = formEmail.trim().toLowerCase();
+
+    if (!cleanName || !cleanEmail) {
+      setFormError('Nama dan email/username wajib diisi');
       return;
     }
 
     setFormSubmitting(true);
     try {
-      await api.users.update(userToEdit.id, {
-        name: formName,
-        email: formEmail,
+      const res = await api.users.update(userToEdit.id, {
+        name: cleanName,
+        email: cleanEmail,
         password: formPassword || undefined,
         role: formRole,
         status: formStatus,
         actorName: currentUser?.name || 'Admin',
       });
+
+      const updatedUser: User = res.user || {
+        ...userToEdit,
+        name: cleanName,
+        email: cleanEmail,
+        role: formRole,
+        status: formStatus,
+      };
+
+      // If the edited user is the current logged-in user, update profile in Navbar & session immediately!
+      if (
+        currentUser &&
+        (userToEdit.id === currentUser.id || userToEdit.email.toLowerCase() === currentUser.email.toLowerCase())
+      ) {
+        const fullCurrentUser = {
+          ...currentUser,
+          name: cleanName,
+          email: cleanEmail,
+          role: formRole,
+          status: formStatus,
+        };
+        onUserUpdated?.(fullCurrentUser);
+        localStorage.setItem('halaqah_user', JSON.stringify(fullCurrentUser));
+        if (sessionStorage.getItem('halaqah_user')) {
+          sessionStorage.setItem('halaqah_user', JSON.stringify(fullCurrentUser));
+        }
+      }
+
       setIsEditModalOpen(false);
+      setSuccessMsg(`Akun "${cleanName}" berhasil diperbarui.`);
+      setTimeout(() => setSuccessMsg(''), 4000);
       await loadUsers();
     } catch (err: any) {
       setFormError(err.message || 'Gagal memperbarui akun');
@@ -153,7 +194,10 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
     setDeleteError('');
     try {
       await api.users.delete(userToDelete.id, currentUser?.name || 'Admin');
+      const deletedName = userToDelete.name;
       setUserToDelete(null);
+      setSuccessMsg(`Akun "${deletedName}" berhasil dihapus.`);
+      setTimeout(() => setSuccessMsg(''), 4000);
       await loadUsers();
     } catch (err: any) {
       setDeleteError(err.message || 'Gagal menghapus pengguna');
@@ -221,6 +265,23 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
           <span>Tambah Akun Baru</span>
         </button>
       </div>
+
+      {/* Success Notification Banner */}
+      {successMsg && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm rounded-2xl flex items-center justify-between shadow-sm animate-scale-in">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span className="font-semibold">{successMsg}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSuccessMsg('')}
+            className="text-emerald-500 hover:text-emerald-700 p-1 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Users Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-soft overflow-hidden">
@@ -375,10 +436,12 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
                       <span>Alamat Email (Username Login)</span>
                     </label>
                     <input
-                      type="email"
+                      type="text"
+                      inputMode="email"
+                      autoComplete="username"
                       value={formEmail}
                       onChange={(e) => setFormEmail(e.target.value)}
-                      placeholder="nama@pesantren.id"
+                      placeholder="imbs@aldri atau nama@pesantren.id"
                       className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 bg-slate-50/50 hover:bg-white focus:bg-white font-medium transition-all"
                       required
                     />

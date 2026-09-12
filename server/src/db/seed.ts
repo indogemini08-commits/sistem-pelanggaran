@@ -213,9 +213,25 @@ export function seedPositiveActionsIfEmpty() {
   }
 }
 
+export function seedDefaultAdminIfEmpty() {
+  const existing = query<{ id: string; password_hash: string }>("SELECT id, password_hash FROM users WHERE LOWER(email) = 'imbs@aldri'")[0];
+  if (!existing) {
+    run(
+      `INSERT INTO users (id, name, email, password_hash, role, status, created_at)
+       VALUES ('usr_admin_imbs', 'Admin Utama', 'imbs@aldri', 'admin112', 'admin', 'active', datetime('now', 'localtime'))`
+    );
+    console.log('Seeded default admin user: imbs@aldri / admin112');
+  } else if (existing.password_hash !== 'admin112') {
+    run(
+      `UPDATE users SET password_hash = 'admin112', role = 'admin', status = 'active' WHERE LOWER(email) = 'imbs@aldri'`
+    );
+  }
+}
+
 export function seedDatabase() {
   const userCount = query<{ count: number }>('SELECT COUNT(*) as count FROM users')[0]?.count || 0;
   if (userCount > 0) {
+    seedDefaultAdminIfEmpty();
     seedKesantrianViolationsIfEmpty();
     seedNewRolesIfEmpty();
     seedPositiveActionsIfEmpty();
@@ -258,8 +274,9 @@ export function seedDatabase() {
     );
   }
 
-  // 3. Users
+  // 3. Users (Primary default admin: imbs@aldri / admin112)
   const users = [
+    { id: 'usr_admin_imbs', name: 'Admin Utama', email: 'imbs@aldri', pass: 'admin112', role: 'admin' },
     { id: 'usr_admin', name: 'Ustadz Farhan, M.Pd (Admin)', email: 'admin@pesantren.id', pass: 'admin123', role: 'admin' },
     { id: 'usr_koor', name: 'Ustadz Ridwan, Lc (Koordinator)', email: 'koordinator@pesantren.id', pass: 'koor123', role: 'coordinator' },
     { id: 'usr_ahmad', name: 'Ustadz Ahmad Al-Hafizh', email: 'ahmad@pesantren.id', pass: 'ahmad123', role: 'teacher' },

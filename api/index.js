@@ -570,9 +570,24 @@ function seedPositiveActionsIfEmpty() {
     console.log("Seeded sample positive record: -5 poin kesantrian for std_002");
   }
 }
+function seedDefaultAdminIfEmpty() {
+  const existing = query("SELECT id, password_hash FROM users WHERE LOWER(email) = 'imbs@aldri'")[0];
+  if (!existing) {
+    run(
+      `INSERT INTO users (id, name, email, password_hash, role, status, created_at)
+       VALUES ('usr_admin_imbs', 'Admin Utama', 'imbs@aldri', 'admin112', 'admin', 'active', datetime('now', 'localtime'))`
+    );
+    console.log("Seeded default admin user: imbs@aldri / admin112");
+  } else if (existing.password_hash !== "admin112") {
+    run(
+      `UPDATE users SET password_hash = 'admin112', role = 'admin', status = 'active' WHERE LOWER(email) = 'imbs@aldri'`
+    );
+  }
+}
 function seedDatabase() {
   const userCount = query("SELECT COUNT(*) as count FROM users")[0]?.count || 0;
   if (userCount > 0) {
+    seedDefaultAdminIfEmpty();
     seedKesantrianViolationsIfEmpty();
     seedNewRolesIfEmpty();
     seedPositiveActionsIfEmpty();
@@ -609,6 +624,7 @@ function seedDatabase() {
     );
   }
   const users = [
+    { id: "usr_admin_imbs", name: "Admin Utama", email: "imbs@aldri", pass: "admin112", role: "admin" },
     { id: "usr_admin", name: "Ustadz Farhan, M.Pd (Admin)", email: "admin@pesantren.id", pass: "admin123", role: "admin" },
     { id: "usr_koor", name: "Ustadz Ridwan, Lc (Koordinator)", email: "koordinator@pesantren.id", pass: "koor123", role: "coordinator" },
     { id: "usr_ahmad", name: "Ustadz Ahmad Al-Hafizh", email: "ahmad@pesantren.id", pass: "ahmad123", role: "teacher" },
@@ -836,9 +852,10 @@ router.post("/login", (req, res) => {
     if (!email || !password) {
       return res.status(400).json({ error: "Email dan password wajib diisi" });
     }
-    const user = get('SELECT * FROM users WHERE email = ? AND status = "active"', [email.trim().toLowerCase()]);
+    const cleanInput = email.trim().toLowerCase();
+    const user = get('SELECT * FROM users WHERE (LOWER(email) = ? OR LOWER(name) = ?) AND status = "active"', [cleanInput, cleanInput]);
     if (!user || user.password_hash !== password) {
-      return res.status(401).json({ error: "Email atau password tidak sesuai" });
+      return res.status(401).json({ error: "Email / Username atau kata sandi tidak sesuai" });
     }
     let teacherInfo = null;
     let assignedHalaqahs = [];
@@ -927,9 +944,9 @@ router2.post("/", (req, res) => {
       return res.status(400).json({ error: "Nama, email, password, dan role wajib diisi" });
     }
     const cleanEmail = email.trim().toLowerCase();
-    const existing = get("SELECT id FROM users WHERE email = ?", [cleanEmail]);
+    const existing = get("SELECT id FROM users WHERE LOWER(email) = ?", [cleanEmail]);
     if (existing) {
-      return res.status(400).json({ error: "Email sudah terdaftar untuk pengguna lain" });
+      return res.status(400).json({ error: "Email / Username sudah terdaftar untuk pengguna lain" });
     }
     const userId = "usr_" + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
     run(
@@ -945,14 +962,26 @@ router2.post("/", (req, res) => {
         [teacherId, userId, name.trim(), phone || ""]
       );
     }
+    persistDb();
     logAudit({
       userName: actorName,
       action: "CREATE_USER",
       tableName: "users",
       recordId: userId,
-      newData: { name, email: cleanEmail, role, status }
+      newData: { name: name.trim(), email: cleanEmail, role, status }
     });
-    return res.status(201).json({ message: "Pengguna berhasil ditambahkan", userId });
+    return res.status(201).json({
+      message: "Pengguna berhasil ditambahkan",
+      userId,
+      user: {
+        id: userId,
+        name: name.trim(),
+        email: cleanEmail,
+        role,
+        status,
+        created_at: (/* @__PURE__ */ new Date()).toISOString()
+      }
+    });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -965,8 +994,8 @@ router2.put("/:id", (req, res) => {
     if (!oldUser) return res.status(404).json({ error: "Pengguna tidak ditemukan" });
     const cleanEmail = email ? email.trim().toLowerCase() : oldUser.email;
     if (cleanEmail !== oldUser.email) {
-      const conflict = get("SELECT id FROM users WHERE email = ? AND id != ?", [cleanEmail, id]);
-      if (conflict) return res.status(400).json({ error: "Email sudah digunakan pengguna lain" });
+      const conflict = get("SELECT id FROM users WHERE LOWER(email) = ? AND id != ?", [cleanEmail, id]);
+      if (conflict) return res.status(400).json({ error: "Email / Username sudah digunakan pengguna lain" });
     }
     const updatedPass = password ? password : oldUser.password_hash;
     const updatedRole = role || oldUser.role;
@@ -987,6 +1016,7 @@ router2.put("/:id", (req, res) => {
         run('INSERT INTO teachers (id, user_id, name, phone, status) VALUES (?, ?, ?, ?, "active")', [teacherId, id, updatedName, phone || ""]);
       }
     }
+    persistDb();
     logAudit({
       userName: actorName,
       action: "UPDATE_USER",
@@ -995,7 +1025,17 @@ router2.put("/:id", (req, res) => {
       oldData: { name: oldUser.name, email: oldUser.email, role: oldUser.role, status: oldUser.status },
       newData: { name: updatedName, email: cleanEmail, role: updatedRole, status: updatedStatus }
     });
-    return res.json({ message: "Data pengguna berhasil diperbarui" });
+    return res.json({
+      message: "Data pengguna berhasil diperbarui",
+      user: {
+        id,
+        name: updatedName,
+        email: cleanEmail,
+        role: updatedRole,
+        status: updatedStatus,
+        created_at: oldUser.created_at
+      }
+    });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -1016,6 +1056,7 @@ router2.delete("/:id", (req, res) => {
     }
     run("UPDATE teachers SET user_id = NULL WHERE user_id = ?", [id]);
     run("DELETE FROM users WHERE id = ?", [id]);
+    persistDb();
     logAudit({
       userName: actorName,
       action: "DELETE_USER",

@@ -10,9 +10,10 @@ router.post('/login', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Email dan password wajib diisi' });
     }
 
-    const user = get<any>('SELECT * FROM users WHERE email = ? AND status = "active"', [email.trim().toLowerCase()]);
+    const cleanInput = email.trim().toLowerCase();
+    const user = get<any>('SELECT * FROM users WHERE (LOWER(email) = ? OR LOWER(name) = ?) AND status = "active"', [cleanInput, cleanInput]);
     if (!user || user.password_hash !== password) {
-      return res.status(401).json({ error: 'Email atau password tidak sesuai' });
+      return res.status(401).json({ error: 'Email / Username atau kata sandi tidak sesuai' });
     }
 
     // If teacher, fetch teacher info & assigned halaqahs
