@@ -1,205 +1,105 @@
-// Client-Side Persistent Storage & Synchronization Manager
-// Solves Vercel Serverless ephemeral statelessness so deleted/created data persists across page reloads.
+// Client-Side Event Synchronization & Data Broadcast Manager
+// Ensures 100% synchronization with the backend database without ghost client suppression.
 
-import { Student, ViolationRecord, PositiveRecord } from '../types';
+const STALE_SUPPRESSION_KEYS = [
+  'imbs_deleted_student_ids',
+  'imbs_deleted_record_ids',
+  'imbs_deleted_pos_record_ids',
+  'imbs_cancelled_records',
+  'imbs_cancelled_pos_records',
+  'sistem_pelanggaran_deleted_student_ids',
+  'sistem_pelanggaran_deleted_record_ids',
+  'sistem_pelanggaran_deleted_pos_record_ids',
+];
 
-const KEYS = {
-  DELETED_STUDENTS: 'imbs_deleted_student_ids',
-  CREATED_STUDENTS: 'imbs_created_students',
-  UPDATED_STUDENTS: 'imbs_updated_students',
-
-  DELETED_RECORDS: 'imbs_deleted_record_ids',
-  CANCELLED_RECORDS: 'imbs_cancelled_records',
-  CREATED_RECORDS: 'imbs_created_records',
-
-  DELETED_POS_RECORDS: 'imbs_deleted_pos_record_ids',
-  CANCELLED_POS_RECORDS: 'imbs_cancelled_pos_records',
-  CREATED_POS_RECORDS: 'imbs_created_pos_records',
-};
-
-
-function safeGetItem<T>(key: string, fallback: T): T {
-  if (typeof window === 'undefined' || !window.localStorage) return fallback;
+// Auto-sanitize on load: ensure no stale local ghost suppression hides active database records
+if (typeof window !== 'undefined' && window.localStorage) {
   try {
-    const item = window.localStorage.getItem(key);
-    return item ? JSON.parse(item) : fallback;
+    STALE_SUPPRESSION_KEYS.forEach((k) => window.localStorage.removeItem(k));
   } catch (e) {
-    console.warn(`Failed to parse localStorage key ${key}:`, e);
-    return fallback;
-  }
-}
-
-function safeSetItem(key: string, value: any) {
-  if (typeof window === 'undefined' || !window.localStorage) return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch (e) {
-    console.warn(`Failed to write localStorage key ${key}:`, e);
+    // Ignore localStorage access restrictions
   }
 }
 
 export const storageSync = {
+  // Global event broadcast for real-time reactivity across all modules
   notifyDataChange(detail?: { action: string; resource: string; id?: string }) {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('app:data-changed', { detail }));
     }
   },
 
-  // === STUDENTS ===
+  // Backward compatibility stubs that safely return empty sets/arrays
   getDeletedStudentIds(): Set<string> {
-    const arr = safeGetItem<string[]>(KEYS.DELETED_STUDENTS, []);
-    return new Set(arr);
+    return new Set<string>();
+  },
+  addDeletedStudentId(_id: string) {
+    this.notifyDataChange({ action: 'delete', resource: 'student', id: _id });
   },
 
-  addDeletedStudentId(id: string) {
-    const set = this.getDeletedStudentIds();
-    set.add(id);
-    safeSetItem(KEYS.DELETED_STUDENTS, Array.from(set));
-
-    // Remove from created list if it was locally created
-    const created = this.getCreatedStudents().filter((s) => s.id !== id);
-    safeSetItem(KEYS.CREATED_STUDENTS, created);
-
-    // Cascade clean locally created records for this student
-    const createdRecs = this.getCreatedRecords().filter((r) => r.student_id !== id);
-    safeSetItem(KEYS.CREATED_RECORDS, createdRecs);
-
-    const createdPosRecs = this.getCreatedPosRecords().filter((r) => r.student_id !== id);
-    safeSetItem(KEYS.CREATED_POS_RECORDS, createdPosRecs);
-
-    this.notifyDataChange({ action: 'delete', resource: 'student', id });
-  },
-
-  getCreatedStudents(): Student[] {
-    return safeGetItem<Student[]>(KEYS.CREATED_STUDENTS, []);
-  },
-
-  saveCreatedStudent(student: Student) {
-    const list = this.getCreatedStudents().filter((s) => s.id !== student.id);
-    list.unshift(student);
-    safeSetItem(KEYS.CREATED_STUDENTS, list);
-
-    // If it was marked deleted previously, unmark
-    const delSet = this.getDeletedStudentIds();
-    if (delSet.has(student.id)) {
-      delSet.delete(student.id);
-      safeSetItem(KEYS.DELETED_STUDENTS, Array.from(delSet));
-    }
-
-    this.notifyDataChange({ action: 'create', resource: 'student', id: student.id });
-  },
-
-  saveCreatedStudentsBulk(students: Student[]) {
-    const existing = this.getCreatedStudents();
-    const existingIds = new Set(existing.map((s) => s.id));
-    const toAdd = students.filter((s) => !existingIds.has(s.id));
-    safeSetItem(KEYS.CREATED_STUDENTS, [...toAdd, ...existing]);
-    this.notifyDataChange({ action: 'bulk_create', resource: 'student' });
-  },
-
-  getUpdatedStudents(): Record<string, Partial<Student>> {
-    return safeGetItem<Record<string, Partial<Student>>>(KEYS.UPDATED_STUDENTS, {});
-  },
-
-  saveUpdatedStudent(id: string, updates: Partial<Student>) {
-    const map = this.getUpdatedStudents();
-    map[id] = { ...(map[id] || {}), ...updates };
-    safeSetItem(KEYS.UPDATED_STUDENTS, map);
-    this.notifyDataChange({ action: 'update', resource: 'student', id });
-  },
-
-  // === VIOLATION RECORDS ===
   getDeletedRecordIds(): Set<string> {
-    const arr = safeGetItem<string[]>(KEYS.DELETED_RECORDS, []);
-    return new Set(arr);
+    return new Set<string>();
   },
-
-  addDeletedRecordId(id: string) {
-    const set = this.getDeletedRecordIds();
-    set.add(id);
-    safeSetItem(KEYS.DELETED_RECORDS, Array.from(set));
-
-    const created = this.getCreatedRecords().filter((r) => r.id !== id);
-    safeSetItem(KEYS.CREATED_RECORDS, created);
-    this.notifyDataChange({ action: 'delete', resource: 'record', id });
+  addDeletedRecordId(_id: string) {
+    this.notifyDataChange({ action: 'delete', resource: 'record', id: _id });
   },
 
   getCancelledRecords(): Record<string, string> {
-    return safeGetItem<Record<string, string>>(KEYS.CANCELLED_RECORDS, {});
+    return {};
+  },
+  addCancelledRecord(_id: string, _reason: string) {
+    this.notifyDataChange({ action: 'cancel', resource: 'record', id: _id });
   },
 
-  addCancelledRecord(id: string, reason: string) {
-    const map = this.getCancelledRecords();
-    map[id] = reason;
-    safeSetItem(KEYS.CANCELLED_RECORDS, map);
-    this.notifyDataChange({ action: 'cancel', resource: 'record', id });
-  },
-
-  getCreatedRecords(): ViolationRecord[] {
-    return safeGetItem<ViolationRecord[]>(KEYS.CREATED_RECORDS, []);
-  },
-
-  saveCreatedRecord(record: ViolationRecord) {
-    const list = this.getCreatedRecords().filter((r) => r.id !== record.id);
-    list.unshift(record);
-    safeSetItem(KEYS.CREATED_RECORDS, list);
-
-    const delSet = this.getDeletedRecordIds();
-    if (delSet.has(record.id)) {
-      delSet.delete(record.id);
-      safeSetItem(KEYS.DELETED_RECORDS, Array.from(delSet));
-    }
-    this.notifyDataChange({ action: 'create', resource: 'record', id: record.id });
-  },
-
-  // === POSITIVE RECORDS ===
   getDeletedPosRecordIds(): Set<string> {
-    const arr = safeGetItem<string[]>(KEYS.DELETED_POS_RECORDS, []);
-    return new Set(arr);
+    return new Set<string>();
   },
-
-  addDeletedPosRecordId(id: string) {
-    const set = this.getDeletedPosRecordIds();
-    set.add(id);
-    safeSetItem(KEYS.DELETED_POS_RECORDS, Array.from(set));
-
-    const created = this.getCreatedPosRecords().filter((r) => r.id !== id);
-    safeSetItem(KEYS.CREATED_POS_RECORDS, created);
-    this.notifyDataChange({ action: 'delete', resource: 'positive_record', id });
+  addDeletedPosRecordId(_id: string) {
+    this.notifyDataChange({ action: 'delete', resource: 'positive_record', id: _id });
   },
 
   getCancelledPosRecords(): Record<string, string> {
-    return safeGetItem<Record<string, string>>(KEYS.CANCELLED_POS_RECORDS, {});
+    return {};
+  },
+  addCancelledPosRecord(_id: string, _reason: string) {
+    this.notifyDataChange({ action: 'cancel', resource: 'positive_record', id: _id });
   },
 
-  addCancelledPosRecord(id: string, reason: string) {
-    const map = this.getCancelledPosRecords();
-    map[id] = reason;
-    safeSetItem(KEYS.CANCELLED_POS_RECORDS, map);
-    this.notifyDataChange({ action: 'cancel', resource: 'positive_record', id });
+  getCreatedStudents(): any[] {
+    return [];
+  },
+  saveCreatedStudent(_student: any) {
+    this.notifyDataChange({ action: 'create', resource: 'student' });
+  },
+  saveCreatedStudentsBulk(_students: any[]) {
+    this.notifyDataChange({ action: 'bulk_create', resource: 'student' });
+  },
+  getUpdatedStudents(): Record<string, any> {
+    return {};
+  },
+  saveUpdatedStudent(_id: string, _updates: any) {
+    this.notifyDataChange({ action: 'update', resource: 'student', id: _id });
   },
 
-  getCreatedPosRecords(): PositiveRecord[] {
-    return safeGetItem<PositiveRecord[]>(KEYS.CREATED_POS_RECORDS, []);
+  getCreatedRecords(): any[] {
+    return [];
+  },
+  saveCreatedRecord(_record: any) {
+    this.notifyDataChange({ action: 'create', resource: 'record' });
   },
 
-  saveCreatedPosRecord(record: PositiveRecord) {
-    const list = this.getCreatedPosRecords().filter((r) => r.id !== record.id);
-    list.unshift(record);
-    safeSetItem(KEYS.CREATED_POS_RECORDS, list);
-
-    const delSet = this.getDeletedPosRecordIds();
-    if (delSet.has(record.id)) {
-      delSet.delete(record.id);
-      safeSetItem(KEYS.DELETED_POS_RECORDS, Array.from(delSet));
-    }
-    this.notifyDataChange({ action: 'create', resource: 'positive_record', id: record.id });
+  getCreatedPosRecords(): any[] {
+    return [];
+  },
+  saveCreatedPosRecord(_record: any) {
+    this.notifyDataChange({ action: 'create', resource: 'positive_record' });
   },
 
-  // === RESET TO FACTORY DEMO ===
   resetToDemo() {
     if (typeof window === 'undefined' || !window.localStorage) return;
-    Object.values(KEYS).forEach((k) => window.localStorage.removeItem(k));
+    try {
+      window.localStorage.clear();
+    } catch (e) {}
     this.notifyDataChange({ action: 'reset', resource: 'all' });
   },
 };

@@ -103,8 +103,7 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
     setLoading(true);
     try {
       const [sList, hList] = await Promise.all([api.students.list(), api.halaqah.list()]);
-      const deletedIds = storageSync.getDeletedStudentIds();
-      setStudents(sList.filter((s) => !deletedIds.has(s.id)));
+      setStudents(sList);
       setHalaqahs(hList);
     } catch (err: any) {
       console.error('Error loading students:', err);

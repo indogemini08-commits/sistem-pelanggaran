@@ -118,10 +118,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const handleStudentClick = (studentId: string) => {
-    if (storageSync.getDeletedStudentIds().has(studentId)) {
-      alert('Data santri ini sudah dihapus dari sistem.');
-      return;
-    }
     onSelectStudent(studentId);
   };
 

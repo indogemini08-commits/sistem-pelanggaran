@@ -127,141 +127,61 @@ export const api = {
         method: 'DELETE',
         body: JSON.stringify({ actorName }),
       }),
-    getStudents: async (id: string): Promise<Student[]> => {
-      const list = await fetchJson<Student[]>(`${API_BASE}/halaqah/${id}/students`);
-      const deletedIds = storageSync.getDeletedStudentIds();
-      return list.filter((s) => !deletedIds.has(s.id));
-    },
+    getStudents: (id: string): Promise<Student[]> =>
+      fetchJson<Student[]>(`${API_BASE}/halaqah/${id}/students`),
   },
 
   // Students (Direct backend database sync)
   students: {
-    list: async (): Promise<Student[]> => {
-      const serverList = await fetchJson<Student[]>(`${API_BASE}/students`);
-      const deletedIds = storageSync.getDeletedStudentIds();
-      const createdStudents = storageSync.getCreatedStudents();
+    list: (): Promise<Student[]> => fetchJson<Student[]>(`${API_BASE}/students`),
 
-      const existingIds = new Set(serverList.map((s) => s.id));
-      const combined = [...serverList];
-
-      for (const s of createdStudents) {
-        if (!existingIds.has(s.id)) {
-          combined.unshift(s);
-          existingIds.add(s.id);
-        }
-      }
-
-      return combined.filter((s) => !deletedIds.has(s.id));
-    },
-
-    getDetail: async (id: string) => {
-      const deletedIds = storageSync.getDeletedStudentIds();
-      if (deletedIds.has(id)) {
-        throw new Error('Santri telah dihapus dari sistem');
-      }
-      return fetchJson<{
+    getDetail: (id: string) =>
+      fetchJson<{
         student: Student;
         records: ViolationRecord[];
         positive_records?: PositiveRecord[];
         history: any[];
-      }>(`${API_BASE}/students/${id}`);
-    },
+      }>(`${API_BASE}/students/${id}`),
 
     create: async (data: any) => {
       const res = await fetchJson<{ message: string; studentId: string }>(`${API_BASE}/students`, {
         method: 'POST',
         body: JSON.stringify(data),
       });
-
-      const newStudent: Student = {
-        id: res.studentId || 'std_' + Date.now().toString(36),
-        student_number: data.studentNumber,
-        name: data.name,
-        class: data.class,
-        gender: data.gender,
-        halaqah_id: data.halaqahId || null,
-        halaqah_name: data.halaqahName || null,
-        academic_year: data.academicYear || '2025/2026',
-        status: 'active',
-        created_at: new Date().toISOString(),
-        total_points: 0,
-        tahfizh_points: 0,
-        kesantrian_points: 0,
-      };
-      storageSync.saveCreatedStudent(newStudent);
-
+      storageSync.notifyDataChange({ action: 'create', resource: 'student', id: res.studentId });
       return res;
     },
 
     update: async (id: string, data: any) => {
-      storageSync.saveUpdatedStudent(id, {
-        student_number: data.studentNumber,
-        name: data.name,
-        class: data.class,
-        gender: data.gender,
-        halaqah_id: data.halaqahId,
-        academic_year: data.academicYear,
+      const res = await fetchJson<{ message: string }>(`${API_BASE}/students/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
       });
-
-      try {
-        return await fetchJson<{ message: string }>(`${API_BASE}/students/${id}`, {
-          method: 'PUT',
-          body: JSON.stringify(data),
-        });
-      } catch (e: any) {
-        console.warn('Backend update failed, saved locally:', e);
-        return { message: 'Data santri berhasil diperbarui' };
-      }
+      storageSync.notifyDataChange({ action: 'update', resource: 'student', id });
+      return res;
     },
 
     delete: async (id: string, actorName?: string) => {
-      // 1. Immediately persist deletion in browser storage (Reload-Proof)
-      storageSync.addDeletedStudentId(id);
-
-      // 2. Send DELETE request to backend - DO NOT silently swallow errors!
       const res = await fetchJson<{ success?: boolean; message: string }>(`${API_BASE}/students/${id}`, {
         method: 'DELETE',
         body: JSON.stringify({ actorName }),
       });
-
+      storageSync.notifyDataChange({ action: 'delete', resource: 'student', id });
       return res;
     },
 
     importExcel: async (rows: any[], actorName?: string) => {
-      let res: any;
-      try {
-        res = await fetchJson<{
-          message: string;
-          insertedCount: number;
-          errorsCount: number;
-          errors: Array<{ row: number; error: string }>;
-          insertedList: any[];
-        }>(`${API_BASE}/students/import`, {
-          method: 'POST',
-          body: JSON.stringify({ rows, actorName }),
-        });
-      } catch (e) {
-        res = {
-          message: `Berhasil mengimpor ${rows.length} santri`,
-          insertedCount: rows.length,
-          errorsCount: 0,
-          errors: [],
-          insertedList: rows.map((r, i) => ({
-            id: 'std_imp_' + Date.now().toString(36) + i,
-            student_number: r.student_number || r.nis,
-            name: r.name,
-            class: r.class,
-            gender: r.gender || 'L',
-            academic_year: r.academic_year || '2025/2026',
-            status: 'active',
-          })),
-        };
-      }
-
-      if (res.insertedList && res.insertedList.length > 0) {
-        storageSync.saveCreatedStudentsBulk(res.insertedList);
-      }
-
+      const res = await fetchJson<{
+        message: string;
+        insertedCount: number;
+        errorsCount: number;
+        errors: Array<{ row: number; error: string }>;
+        insertedList: any[];
+      }>(`${API_BASE}/students/import`, {
+        method: 'POST',
+        body: JSON.stringify({ rows, actorName }),
+      });
+      storageSync.notifyDataChange({ action: 'bulk_create', resource: 'student' });
       return res;
     },
   },
@@ -291,34 +211,7 @@ export const api = {
   records: {
     list: async (params: Record<string, string> = {}): Promise<ViolationRecord[]> => {
       const qs = new URLSearchParams(params).toString();
-      const serverList = await fetchJson<ViolationRecord[]>(`${API_BASE}/records${qs ? '?' + qs : ''}`);
-      const deletedRecordIds = storageSync.getDeletedRecordIds();
-      const deletedStudentIds = storageSync.getDeletedStudentIds();
-      const cancelledRecords = storageSync.getCancelledRecords();
-      const createdRecords = storageSync.getCreatedRecords();
-
-      const existingIds = new Set(serverList.map((r) => r.id));
-      const combined: ViolationRecord[] = [...serverList];
-
-      for (const r of createdRecords) {
-        if (!existingIds.has(r.id)) {
-          combined.unshift(r);
-          existingIds.add(r.id);
-        }
-      }
-
-      return combined
-        .filter((r) => !deletedRecordIds.has(r.id) && !deletedStudentIds.has(r.student_id))
-        .map((r) => {
-          if (cancelledRecords[r.id]) {
-            return {
-              ...r,
-              status: 'cancelled' as const,
-              cancellation_reason: cancelledRecords[r.id],
-            };
-          }
-          return r;
-        });
+      return await fetchJson<ViolationRecord[]>(`${API_BASE}/records${qs ? '?' + qs : ''}`);
     },
 
     create: async (data: {
@@ -349,67 +242,31 @@ export const api = {
         body: JSON.stringify(data),
       });
 
-      const now = new Date();
-      const record: ViolationRecord = {
-        id: res.recordId || 'rec_' + Date.now().toString(36),
-        student_id: data.studentId,
-        student_name: res.studentName,
-        division: res.division || 'tahfizh',
-        halaqah_id: data.halaqahId || null,
-        halaqah_name_snapshot: data.locationName || 'Halaqah',
-        teacher_id: null,
-        teacher_name_snapshot: data.supervisorName || data.createdBy || 'Pembina',
-        violation_id: data.violationId,
-        violation_name_snapshot: res.violationName,
-        points_snapshot: res.points,
-        student_class_snapshot: '-',
-        academic_year_snapshot: '2025/2026',
-        date: data.date || now.toISOString().split('T')[0],
-        time: data.time || now.toTimeString().substring(0, 5),
-        notes: data.notes || '',
-        evidence_url: data.evidenceUrl,
-        status: 'active',
-        created_by: data.createdBy || 'Petugas',
-        created_at: now.toISOString(),
-      };
-
-      storageSync.saveCreatedRecord(record);
+      storageSync.notifyDataChange({ action: 'create', resource: 'record', id: res.recordId });
       return res;
     },
 
     cancel: async (id: string, cancellationReason: string, actorName?: string) => {
-      storageSync.addCancelledRecord(id, cancellationReason);
-
-      return await fetchJson<{ success?: boolean; message: string }>(`${API_BASE}/records/${id}/cancel`, {
+      const res = await fetchJson<{ success?: boolean; message: string }>(`${API_BASE}/records/${id}/cancel`, {
         method: 'PUT',
         body: JSON.stringify({ cancellationReason, actorName }),
       });
+      storageSync.notifyDataChange({ action: 'cancel', resource: 'record', id });
+      return res;
     },
 
     delete: async (id: string, actorName?: string) => {
-      storageSync.addDeletedRecordId(id);
-
-      return await fetchJson<{ success?: boolean; message: string }>(`${API_BASE}/records/${id}`, {
+      const res = await fetchJson<{ success?: boolean; message: string }>(`${API_BASE}/records/${id}`, {
         method: 'DELETE',
         body: JSON.stringify({ actorName }),
       });
+      storageSync.notifyDataChange({ action: 'delete', resource: 'record', id });
+      return res;
     },
 
-    stats: async (division?: string): Promise<DashboardStats> => {
+    stats: (division?: string): Promise<DashboardStats> => {
       const qs = division && division !== 'all' ? '?division=' + encodeURIComponent(division) : '';
-      const data = await fetchJson<DashboardStats>(`${API_BASE}/records/stats${qs}`);
-      const deletedStudentIds = storageSync.getDeletedStudentIds();
-
-      if (data && deletedStudentIds.size > 0) {
-        if (Array.isArray(data.topStudents)) {
-          data.topStudents = data.topStudents.filter((s) => !deletedStudentIds.has(s.id));
-        }
-        if (Array.isArray(data.studentsNeedingAttention)) {
-          data.studentsNeedingAttention = data.studentsNeedingAttention.filter((s) => !deletedStudentIds.has(s.id));
-        }
-      }
-
-      return data;
+      return fetchJson<DashboardStats>(`${API_BASE}/records/stats${qs}`);
     },
   },
 
@@ -438,34 +295,7 @@ export const api = {
   positiveRecords: {
     list: async (params: Record<string, string> = {}): Promise<PositiveRecord[]> => {
       const qs = new URLSearchParams(params).toString();
-      const serverList = await fetchJson<PositiveRecord[]>(`${API_BASE}/positive-records${qs ? '?' + qs : ''}`);
-      const deletedPosIds = storageSync.getDeletedPosRecordIds();
-      const deletedStudentIds = storageSync.getDeletedStudentIds();
-      const cancelledPosRecords = storageSync.getCancelledPosRecords();
-      const createdPosRecords = storageSync.getCreatedPosRecords();
-
-      const existingIds = new Set(serverList.map((r) => r.id));
-      const combined: PositiveRecord[] = [...serverList];
-
-      for (const r of createdPosRecords) {
-        if (!existingIds.has(r.id)) {
-          combined.unshift(r);
-          existingIds.add(r.id);
-        }
-      }
-
-      return combined
-        .filter((r) => !deletedPosIds.has(r.id) && !deletedStudentIds.has(r.student_id))
-        .map((r) => {
-          if (cancelledPosRecords[r.id]) {
-            return {
-              ...r,
-              status: 'cancelled' as const,
-              cancellation_reason: cancelledPosRecords[r.id],
-            };
-          }
-          return r;
-        });
+      return await fetchJson<PositiveRecord[]>(`${API_BASE}/positive-records${qs ? '?' + qs : ''}`);
     },
 
     create: async (data: {
@@ -479,58 +309,41 @@ export const api = {
       date?: string;
       time?: string;
       notes?: string;
+      createdBy?: string;
       actorName?: string;
     }) => {
       const res = await fetchJson<{
         message: string;
         recordId: string;
+        studentName: string;
+        actionName: string;
         pointsDeducted: number;
+        newTotalPoints: number;
       }>(`${API_BASE}/positive-records`, {
         method: 'POST',
         body: JSON.stringify(data),
       });
 
-      const now = new Date();
-      const record: PositiveRecord = {
-        id: res.recordId || 'pos_' + Date.now().toString(36),
-        student_id: data.studentId,
-        student_name: 'Santri',
-        division: data.division || 'tahfizh',
-        action_id: data.actionId || null,
-        action_name_snapshot: data.customActionName || 'Kegiatan Baik',
-        points_deducted: res.pointsDeducted || data.customPoints || 5,
-        halaqah_id: null,
-        halaqah_name_snapshot: data.locationName || 'Halaqah & Asrama',
-        teacher_id: null,
-        teacher_name_snapshot: data.supervisorName || data.actorName || 'Pembina',
-        student_class_snapshot: '-',
-        academic_year_snapshot: '2025/2026',
-        date: data.date || now.toISOString().split('T')[0],
-        time: data.time || now.toTimeString().substring(0, 5),
-        notes: data.notes || '',
-        status: 'active',
-        created_by: data.actorName || 'Petugas',
-        created_at: now.toISOString(),
-      };
-
-      storageSync.saveCreatedPosRecord(record);
+      storageSync.notifyDataChange({ action: 'create', resource: 'positive_record', id: res.recordId });
       return res;
     },
 
-    cancel: async (id: string, reason: string, actorName?: string) => {
-      storageSync.addCancelledPosRecord(id, reason);
-      return await fetchJson<{ success?: boolean; message: string }>(`${API_BASE}/positive-records/${id}/cancel`, {
+    cancel: async (id: string, cancellationReason: string, actorName?: string) => {
+      const res = await fetchJson<{ success?: boolean; message: string }>(`${API_BASE}/positive-records/${id}/cancel`, {
         method: 'PUT',
-        body: JSON.stringify({ reason, actorName }),
+        body: JSON.stringify({ cancellationReason, actorName }),
       });
+      storageSync.notifyDataChange({ action: 'cancel', resource: 'positive_record', id });
+      return res;
     },
 
     delete: async (id: string, actorName?: string) => {
-      storageSync.addDeletedPosRecordId(id);
-      return await fetchJson<{ success?: boolean; message: string }>(`${API_BASE}/positive-records/${id}`, {
+      const res = await fetchJson<{ success?: boolean; message: string }>(`${API_BASE}/positive-records/${id}`, {
         method: 'DELETE',
         body: JSON.stringify({ actorName }),
       });
+      storageSync.notifyDataChange({ action: 'delete', resource: 'positive_record', id });
+      return res;
     },
   },
 
