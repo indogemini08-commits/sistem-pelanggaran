@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query, get, run, logAudit } from '../db/database';
+import { query, get, run, logAudit, persistDb } from '../db/database';
 
 const router = Router();
 
@@ -68,6 +68,8 @@ router.post('/', (req: Request, res: Response) => {
       [violationId, cleanCode, name.trim(), cleanDivision, category, description || '', parseInt(defaultPoints, 10), status]
     );
 
+    persistDb();
+
     logAudit({
       userName: actorName,
       action: 'CREATE_MASTER_VIOLATION',
@@ -114,6 +116,7 @@ router.put('/:id', (req: Request, res: Response) => {
        WHERE id = ?`,
       [cleanCode, updatedName, updatedDivision, updatedCategory, updatedPoints, updatedDesc, updatedStatus, id]
     );
+    persistDb();
 
     logAudit({
       userName: actorName,
@@ -156,6 +159,7 @@ router.post('/bulk-delete', (req: Request, res: Response) => {
       });
       deleted.push(id);
     }
+    persistDb();
 
     return res.json({
       success: true,
@@ -182,6 +186,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     // We do not hard delete if there are historical records, or we nullify FK because records have snapshots!
     run('UPDATE violation_records SET violation_id = NULL WHERE violation_id = ?', [id]);
     run('DELETE FROM violations WHERE id = ?', [id]);
+    persistDb();
 
     logAudit({
       userName: actorName,

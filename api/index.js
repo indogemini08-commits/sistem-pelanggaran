@@ -1797,6 +1797,7 @@ router6.post("/", (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
       [violationId, cleanCode, name.trim(), cleanDivision, category, description || "", parseInt(defaultPoints, 10), status]
     );
+    persistDb();
     logAudit({
       userName: actorName,
       action: "CREATE_MASTER_VIOLATION",
@@ -1835,6 +1836,7 @@ router6.put("/:id", (req, res) => {
        WHERE id = ?`,
       [cleanCode, updatedName, updatedDivision, updatedCategory, updatedPoints, updatedDesc, updatedStatus, id]
     );
+    persistDb();
     logAudit({
       userName: actorName,
       action: "UPDATE_MASTER_VIOLATION",
@@ -1871,6 +1873,7 @@ router6.post("/bulk-delete", (req, res) => {
       });
       deleted.push(id);
     }
+    persistDb();
     return res.json({
       success: true,
       deletedCount: deleted.length,
@@ -1891,6 +1894,7 @@ router6.delete("/:id", (req, res) => {
     }
     run("UPDATE violation_records SET violation_id = NULL WHERE violation_id = ?", [id]);
     run("DELETE FROM violations WHERE id = ?", [id]);
+    persistDb();
     logAudit({
       userName: actorName,
       action: "DELETE_MASTER_VIOLATION",
@@ -2308,12 +2312,15 @@ router7.get("/stats", (req, res) => {
     });
     const topStudents = [...enrichedStudents].sort((a, b) => b.total_points - a.total_points).slice(0, 10);
     const byCategory = query(`
-      SELECT v.category, v.division, COUNT(vr.id) as count, COALESCE(SUM(vr.points_snapshot), 0) as points
+      SELECT COALESCE(v.category, 'Kedisiplinan') as category,
+             COALESCE(vr.division, 'tahfizh') as division,
+             COUNT(vr.id) as count,
+             COALESCE(SUM(vr.points_snapshot), 0) as points
       FROM violation_records vr
       JOIN students s ON s.id = vr.student_id AND s.status = 'active'
-      JOIN violations v ON v.id = vr.violation_id
+      LEFT JOIN violations v ON v.id = vr.violation_id
       WHERE vr.status = 'active' ${divisionFilterSql}
-      GROUP BY v.category, v.division
+      GROUP BY COALESCE(v.category, 'Kedisiplinan'), COALESCE(vr.division, 'tahfizh')
       ORDER BY count DESC
     `);
     const pointsByHalaqah = query(`

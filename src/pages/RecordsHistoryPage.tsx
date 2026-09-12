@@ -70,6 +70,11 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
   const [showBulkConfirm, setShowBulkConfirm] = useState<boolean>(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
 
+  const canDelete =
+    currentUser?.role === 'admin' ||
+    currentUser?.role === 'coordinator' ||
+    currentUser?.role === 'kepala_kesantrian';
+
   useEffect(() => {
     setFilterDivision(initialDivision);
   }, [initialDivision]);
@@ -653,11 +658,11 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
                             <span>Batalkan</span>
                           </button>
                         )}
-                        {currentUser?.role === 'admin' && (
+                        {canDelete && (
                           <button
                             onClick={() => setRecordToDelete(r)}
                             className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center"
-                            title="Hapus"
+                            title="Hapus Permanen"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -818,11 +823,11 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
                               <Ban className="w-4 h-4" />
                             </button>
                           )}
-                          {currentUser?.role === 'admin' && (
+                          {canDelete && (
                             <button
                               onClick={() => setRecordToDelete(r)}
                               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                              title="Hapus Permanen (Admin Only)"
+                              title="Hapus Permanen"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>

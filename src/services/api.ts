@@ -286,8 +286,13 @@ export const api = {
 
   // Violations Master
   violations: {
-    list: (division?: string) =>
-      fetchJson<MasterViolation[]>(`${API_BASE}/violations${division && division !== 'all' ? '?division=' + encodeURIComponent(division) : ''}`),
+    list: async (division?: string): Promise<MasterViolation[]> => {
+      const list = await fetchJson<MasterViolation[]>(
+        `${API_BASE}/violations${division && division !== 'all' ? '?division=' + encodeURIComponent(division) : ''}`
+      );
+      const deletedIds = storageSync.getDeletedViolationIds();
+      return (list || []).filter((v) => !deletedIds.has(v.id));
+    },
     create: (data: any) =>
       fetchJson<{ message: string; violationId: string }>(`${API_BASE}/violations`, {
         method: 'POST',
@@ -298,16 +303,20 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify(data),
       }),
-    delete: (id: string, actorName?: string) =>
-      fetchJson<{ message: string }>(`${API_BASE}/violations/${id}`, {
+    delete: async (id: string, actorName?: string) => {
+      storageSync.addDeletedViolationId(id);
+      return await fetchJson<{ message: string }>(`${API_BASE}/violations/${id}`, {
         method: 'DELETE',
         body: JSON.stringify({ actorName }),
-      }),
-    bulkDelete: (ids: string[], actorName?: string) =>
-      fetchJson<{ success?: boolean; deletedCount: number; deletedIds: string[]; message: string }>(`${API_BASE}/violations/bulk-delete`, {
+      });
+    },
+    bulkDelete: async (ids: string[], actorName?: string) => {
+      ids.forEach((id) => storageSync.addDeletedViolationId(id));
+      return await fetchJson<{ success?: boolean; deletedCount: number; deletedIds: string[]; message: string }>(`${API_BASE}/violations/bulk-delete`, {
         method: 'POST',
         body: JSON.stringify({ ids, actorName }),
-      }),
+      });
+    },
   },
 
   // Violation Records (Rekap Terpadu directly synced with backend database)
@@ -429,24 +438,41 @@ export const api = {
 
     stats: async (division?: string): Promise<DashboardStats> => {
       const qs = division && division !== 'all' ? '?division=' + encodeURIComponent(division) : '';
-      // Always get fresh data from backend (backend is the single source of truth)
       const data = await fetchJson<DashboardStats>(`${API_BASE}/records/stats${qs}`);
 
-      // Only filter client-side by IDs that are KNOWN to be deleted (belt-and-suspenders for Vercel cold starts)
       const deletedStudentIds = storageSync.getDeletedStudentIds();
+      const deletedRecordIds = storageSync.getDeletedRecordIds();
 
-      if (data && deletedStudentIds.size > 0) {
-        // Reconcile: remove IDs from localStorage if backend already doesn't have them
-        // (meaning deletion was already persisted - we can clean stale localStorage entries)
-        if (Array.isArray(data.topStudents)) {
-          data.topStudents = data.topStudents.filter((s) => !deletedStudentIds.has(s.id));
-        }
-        if (Array.isArray(data.studentsNeedingAttention)) {
-          data.studentsNeedingAttention = data.studentsNeedingAttention.filter((s) => !deletedStudentIds.has(s.id));
-        }
+      // Ensure robust object structure with zero-risk defaults
+      const safeData: DashboardStats = {
+        summary: data?.summary || {
+          totalStudents: 0,
+          totalTeachers: 0,
+          totalHalaqah: 0,
+          totalRecords: 0,
+          totalPoints: 0,
+          todayCount: 0,
+          monthCount: 0,
+          netTotalPoints: 0,
+        },
+        topStudents: Array.isArray(data?.topStudents) ? data.topStudents : [],
+        byCategory: Array.isArray(data?.byCategory) ? data.byCategory : [],
+        pointsByHalaqah: Array.isArray(data?.pointsByHalaqah) ? data.pointsByHalaqah : [],
+        monthlyTrend: Array.isArray(data?.monthlyTrend) ? data.monthlyTrend : [],
+        studentsNeedingAttention: Array.isArray(data?.studentsNeedingAttention) ? data.studentsNeedingAttention : [],
+      };
+
+      if (deletedStudentIds.size > 0) {
+        safeData.topStudents = safeData.topStudents.filter((s) => !deletedStudentIds.has(s.id));
+        safeData.studentsNeedingAttention = safeData.studentsNeedingAttention.filter((s) => !deletedStudentIds.has(s.id));
+        safeData.summary.totalStudents = Math.max(0, safeData.summary.totalStudents - deletedStudentIds.size);
       }
 
-      return data;
+      if (deletedRecordIds.size > 0) {
+        safeData.summary.totalRecords = Math.max(0, safeData.summary.totalRecords - deletedRecordIds.size);
+      }
+
+      return safeData;
     },
   },
 

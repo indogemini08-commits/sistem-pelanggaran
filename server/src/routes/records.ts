@@ -490,14 +490,17 @@ router.get('/stats', (req: Request, res: Response) => {
       .sort((a, b) => b.total_points - a.total_points)
       .slice(0, 10);
 
-    // Violations by category
+    // Violations by category (LEFT JOIN so records with deleted/custom violations are never lost)
     const byCategory = query<any>(`
-      SELECT v.category, v.division, COUNT(vr.id) as count, COALESCE(SUM(vr.points_snapshot), 0) as points
+      SELECT COALESCE(v.category, 'Kedisiplinan') as category,
+             COALESCE(vr.division, 'tahfizh') as division,
+             COUNT(vr.id) as count,
+             COALESCE(SUM(vr.points_snapshot), 0) as points
       FROM violation_records vr
       JOIN students s ON s.id = vr.student_id AND s.status = 'active'
-      JOIN violations v ON v.id = vr.violation_id
+      LEFT JOIN violations v ON v.id = vr.violation_id
       WHERE vr.status = 'active' ${divisionFilterSql}
-      GROUP BY v.category, v.division
+      GROUP BY COALESCE(v.category, 'Kedisiplinan'), COALESCE(vr.division, 'tahfizh')
       ORDER BY count DESC
     `);
 

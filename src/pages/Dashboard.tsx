@@ -440,7 +440,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           {/* Mobile Cards List for Top 10 */}
           <div className="block md:hidden divide-y divide-slate-100">
-            {stats?.topStudents.map((s, idx) => (
+            {(stats?.topStudents || []).map((s, idx) => (
               <div
                 key={s.id}
                 onClick={() => handleStudentClick(s.id)}
@@ -495,7 +495,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {stats?.topStudents.map((s, idx) => (
+                {(stats?.topStudents || []).map((s, idx) => (
                   <tr
                     key={s.id}
                     onClick={() => handleStudentClick(s.id)}
@@ -554,8 +554,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           <div className="space-y-3">
-            {stats?.byCategory.map((c) => {
-              const maxCount = Math.max(...(stats?.byCategory.map((x) => x.count) || [1]), 1);
+            {(stats?.byCategory || []).map((c) => {
+              const maxCount = Math.max(...((stats?.byCategory || []).map((x) => x.count) || [1]), 1);
               const percentage = Math.round((c.count / maxCount) * 100);
               const isKesantrian = c.division === 'kesantrian';
 

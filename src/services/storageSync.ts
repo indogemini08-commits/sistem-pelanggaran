@@ -8,6 +8,9 @@ const KEYS = {
   CREATED_STUDENTS: 'imbs_created_students',
   UPDATED_STUDENTS: 'imbs_updated_students',
 
+  DELETED_VIOLATIONS: 'imbs_deleted_violation_ids',
+  CREATED_VIOLATIONS: 'imbs_created_violations',
+
   DELETED_RECORDS: 'imbs_deleted_record_ids',
   CANCELLED_RECORDS: 'imbs_cancelled_records',
   CREATED_RECORDS: 'imbs_created_records',
@@ -196,6 +199,19 @@ export const storageSync = {
     this.notifyDataChange({ action: 'create', resource: 'positive_record', id: record.id });
   },
 
+  // === MASTER VIOLATIONS ===
+  getDeletedViolationIds(): Set<string> {
+    const arr = safeGetItem<string[]>(KEYS.DELETED_VIOLATIONS, []);
+    return new Set(arr);
+  },
+
+  addDeletedViolationId(id: string) {
+    const set = this.getDeletedViolationIds();
+    set.add(id);
+    safeSetItem(KEYS.DELETED_VIOLATIONS, Array.from(set));
+    this.notifyDataChange({ action: 'delete', resource: 'violation', id });
+  },
+
   // === RESET TO FACTORY DEMO ===
   resetToDemo() {
     if (typeof window === 'undefined' || !window.localStorage) return;
@@ -203,17 +219,9 @@ export const storageSync = {
     this.notifyDataChange({ action: 'reset', resource: 'all' });
   },
 
-  // === RECONCILE: Remove stale localStorage deletedIds that are already gone from server ===
-  // Call this after fetching live data from server to keep localStorage clean.
-  reconcileDeletedStudentIds(serverStudentIds: string[]) {
-    const serverSet = new Set(serverStudentIds);
-    const deletedIds = this.getDeletedStudentIds();
-    // Any ID in deletedIds that is NOT in serverSet has already been deleted server-side
-    // We can safely remove it from localStorage since it's already gone from DB.
-    const stale = Array.from(deletedIds).filter((id) => !serverSet.has(id));
-    if (stale.length > 0) {
-      stale.forEach((id) => deletedIds.delete(id));
-      safeSetItem(KEYS.DELETED_STUDENTS, Array.from(deletedIds));
-    }
+  // === RECONCILE: Keep deletions permanently to protect against Vercel cold-boot re-seeding ===
+  reconcileDeletedStudentIds(_serverStudentIds: string[]) {
+    // Intentionally retained: do not auto-delete from localStorage so Vercel lambda cold restarts
+    // cannot resurrect deleted students.
   },
 };

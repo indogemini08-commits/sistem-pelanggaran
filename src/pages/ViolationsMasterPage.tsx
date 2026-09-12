@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import type { MasterViolation, User, ViolationDivision } from '../types';
 import { api } from '../services/api';
+import { storageSync } from '../services/storageSync';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 
 interface ViolationsMasterPageProps {
@@ -70,6 +71,17 @@ export const ViolationsMasterPage: React.FC<ViolationsMasterPageProps> = ({
 
   useEffect(() => {
     loadViolations();
+
+    const handleDataChanged = (e: any) => {
+      if (!e?.detail?.resource || e?.detail?.resource === 'violation' || e?.detail?.resource === 'all') {
+        loadViolations();
+      }
+    };
+
+    window.addEventListener('app:data-changed', handleDataChanged);
+    return () => {
+      window.removeEventListener('app:data-changed', handleDataChanged);
+    };
   }, []);
 
   const loadViolations = async () => {
@@ -178,8 +190,10 @@ export const ViolationsMasterPage: React.FC<ViolationsMasterPageProps> = ({
     setDeleteError('');
     try {
       await api.violations.delete(targetId, currentUser?.name || 'Admin');
+      setViolations((prev) => prev.filter((v) => v.id !== targetId));
       setSelectedIds((prev) => { const n = new Set(prev); n.delete(targetId); return n; });
       setViolationToDelete(null);
+      storageSync.notifyDataChange({ action: 'delete', resource: 'violation', id: targetId });
       await loadViolations();
     } catch (err: any) {
       setDeleteError(err.message || 'Gagal menghapus master pelanggaran');
@@ -206,6 +220,7 @@ export const ViolationsMasterPage: React.FC<ViolationsMasterPageProps> = ({
       setViolations((prev) => prev.filter((v) => !selectedIds.has(v.id)));
       setSelectedIds(new Set());
       setShowBulkConfirm(false);
+      storageSync.notifyDataChange({ action: 'delete', resource: 'violation' });
       await loadViolations();
     } catch (err: any) {
       alert('Gagal menghapus aturan secara massal: ' + (err?.message || err));
