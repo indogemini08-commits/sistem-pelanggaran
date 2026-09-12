@@ -81,7 +81,7 @@ export function getStatusForPoints(points: number, thresholds: PointThreshold[] 
 }
 
 export const api = {
-  // Persistence & Sync Helpers
+  // Persistence & Multi-Device Sync Helpers
   sync: {
     resetToDemo: () => {
       storageSync.resetToDemo();
@@ -89,6 +89,9 @@ export const api = {
         window.location.reload();
       }
     },
+    syncWithServer: () => storageSync.syncWithServer(),
+    getStatus: () => fetchJson<{ status: string; cloud: any; serverTime: string }>(`${API_BASE}/sync/status`),
+    getState: () => fetchJson<{ status: string; cloud: any; serverTime: string; state: any }>(`${API_BASE}/sync/state`),
   },
 
   // Auth

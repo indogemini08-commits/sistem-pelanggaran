@@ -183,6 +183,161 @@ CREATE TABLE IF NOT EXISTS positive_records (
 );
 `;
 
+// server/src/db/cloudStorage.ts
+import { neon } from "@neondatabase/serverless";
+import { put, list } from "@vercel/blob";
+function getActiveCloudProvider() {
+  if (process.env.POSTGRES_URL || process.env.DATABASE_URL) {
+    return {
+      provider: "postgres",
+      isConnected: true,
+      details: "PostgreSQL / Neon Database Aktif (Shared Cloud Persistence)"
+    };
+  }
+  if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+    return {
+      provider: "vercel-kv",
+      isConnected: true,
+      details: "Vercel KV / Upstash Redis Aktif (Shared Cloud Persistence)"
+    };
+  }
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    return {
+      provider: "vercel-blob",
+      isConnected: true,
+      details: "Vercel Blob Storage Aktif (Shared Cloud Persistence)"
+    };
+  }
+  return {
+    provider: "local-sqlite",
+    isConnected: false,
+    details: process.env.VERCEL ? "Mode Serverless Ephemeral (Hubungkan Vercel Postgres/KV di tab Storage untuk cloud persistence 24/7)" : "Mode Localhost SQLite (server/data/halaqah.db)"
+  };
+}
+async function loadCloudSnapshot() {
+  const providerInfo = getActiveCloudProvider();
+  if (providerInfo.provider === "postgres") {
+    const dbUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+    try {
+      const sql = neon(dbUrl);
+      await sql`
+        CREATE TABLE IF NOT EXISTS imbs_snapshots (
+          id TEXT PRIMARY KEY,
+          data JSONB NOT NULL,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+      `;
+      const rows = await sql`SELECT data FROM imbs_snapshots WHERE id = 'master_snapshot' LIMIT 1;`;
+      if (rows && rows.length > 0 && rows[0].data) {
+        console.log("[CloudStorage] Snapshot berhasil dimuat dari PostgreSQL / Neon.");
+        return rows[0].data;
+      }
+    } catch (err) {
+      console.warn("[CloudStorage] Gagal memuat snapshot dari PostgreSQL / Neon:", err?.message || err);
+    }
+  }
+  if (providerInfo.provider === "vercel-kv") {
+    const kvUrl = process.env.KV_REST_API_URL;
+    const kvToken = process.env.KV_REST_API_TOKEN;
+    try {
+      const res = await fetch(`${kvUrl}/get/imbs_master_snapshot`, {
+        headers: { Authorization: `Bearer ${kvToken}` }
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.result) {
+          const parsed = typeof json.result === "string" ? JSON.parse(json.result) : json.result;
+          console.log("[CloudStorage] Snapshot berhasil dimuat dari Vercel KV.");
+          return parsed;
+        }
+      }
+    } catch (err) {
+      console.warn("[CloudStorage] Gagal memuat snapshot dari Vercel KV:", err?.message || err);
+    }
+  }
+  if (providerInfo.provider === "vercel-blob") {
+    try {
+      const blobs = await list({ prefix: "imbs-data/master-snapshot.json" });
+      if (blobs.blobs && blobs.blobs.length > 0) {
+        const blobUrl = blobs.blobs[0].url;
+        const res = await fetch(blobUrl);
+        if (res.ok) {
+          const snapshot = await res.json();
+          console.log("[CloudStorage] Snapshot berhasil dimuat dari Vercel Blob.");
+          return snapshot;
+        }
+      }
+    } catch (err) {
+      console.warn("[CloudStorage] Gagal memuat snapshot dari Vercel Blob:", err?.message || err);
+    }
+  }
+  return null;
+}
+var isSaving = false;
+var pendingSave = null;
+async function saveCloudSnapshot(snapshot) {
+  const providerInfo = getActiveCloudProvider();
+  if (!providerInfo.isConnected) {
+    return false;
+  }
+  if (isSaving) {
+    pendingSave = snapshot;
+    return true;
+  }
+  isSaving = true;
+  try {
+    if (providerInfo.provider === "postgres") {
+      const dbUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+      const sql = neon(dbUrl);
+      const dataStr = JSON.stringify(snapshot);
+      await sql`
+        INSERT INTO imbs_snapshots (id, data, updated_at)
+        VALUES ('master_snapshot', ${dataStr}::jsonb, NOW())
+        ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW();
+      `;
+      console.log("[CloudStorage] Snapshot berhasil disimpan ke PostgreSQL / Neon.");
+      return true;
+    }
+    if (providerInfo.provider === "vercel-kv") {
+      const kvUrl = process.env.KV_REST_API_URL;
+      const kvToken = process.env.KV_REST_API_TOKEN;
+      const dataStr = JSON.stringify(snapshot);
+      const res = await fetch(`${kvUrl}/set/imbs_master_snapshot`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${kvToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(dataStr)
+      });
+      if (res.ok) {
+        console.log("[CloudStorage] Snapshot berhasil disimpan ke Vercel KV.");
+        return true;
+      }
+    }
+    if (providerInfo.provider === "vercel-blob") {
+      const dataStr = JSON.stringify(snapshot, null, 2);
+      await put("imbs-data/master-snapshot.json", dataStr, {
+        access: "public",
+        addRandomSuffix: false,
+        contentType: "application/json"
+      });
+      console.log("[CloudStorage] Snapshot berhasil disimpan ke Vercel Blob.");
+      return true;
+    }
+  } catch (err) {
+    console.error("[CloudStorage] Gagal menyimpan snapshot ke cloud provider:", err?.message || err);
+  } finally {
+    isSaving = false;
+    if (pendingSave) {
+      const next = pendingSave;
+      pendingSave = null;
+      setTimeout(() => saveCloudSnapshot(next), 100);
+    }
+  }
+  return false;
+}
+
 // server/src/db/database.ts
 var db = null;
 var DATA_DIR = process.env.VERCEL ? path.join("/tmp", "data") : path.resolve(process.cwd(), "server", "data");
@@ -311,6 +466,77 @@ function runMigrations(database) {
     console.error("Peringatan pembuatan tabel positive_actions/positive_records:", e?.message || e);
   }
 }
+function exportDatabaseState() {
+  if (!db) throw new Error("Database belum diinisialisasi");
+  const tables = [
+    "users",
+    "teachers",
+    "halaqah",
+    "students",
+    "student_halaqah_history",
+    "violations",
+    "violation_records",
+    "positive_actions",
+    "positive_records",
+    "school_settings",
+    "point_thresholds"
+  ];
+  const state = {
+    version: 1,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  for (const t of tables) {
+    try {
+      state[t] = query(`SELECT * FROM ${t}`);
+    } catch {
+      state[t] = [];
+    }
+  }
+  return state;
+}
+function importDatabaseState(snapshot) {
+  if (!db) throw new Error("Database belum diinisialisasi");
+  const tables = [
+    "point_thresholds",
+    "school_settings",
+    "users",
+    "teachers",
+    "halaqah",
+    "students",
+    "student_halaqah_history",
+    "violations",
+    "violation_records",
+    "positive_actions",
+    "positive_records"
+  ];
+  db.run("PRAGMA foreign_keys = OFF;");
+  for (const t of tables) {
+    const rows = snapshot[t];
+    if (Array.isArray(rows) && rows.length > 0) {
+      try {
+        db.run(`DELETE FROM ${t};`);
+        const cols = Object.keys(rows[0]);
+        const placeholders = cols.map(() => "?").join(",");
+        const sql = `INSERT INTO ${t} (${cols.join(",")}) VALUES (${placeholders});`;
+        const stmt = db.prepare(sql);
+        for (const row of rows) {
+          stmt.run(cols.map((col) => row[col]));
+        }
+        stmt.free();
+      } catch (err) {
+        console.warn(`Gagal mengimpor tabel ${t}:`, err);
+      }
+    }
+  }
+  try {
+    db.run("DELETE FROM violation_records WHERE student_id NOT IN (SELECT id FROM students);");
+    db.run("DELETE FROM positive_records WHERE student_id NOT IN (SELECT id FROM students);");
+    db.run("DELETE FROM student_halaqah_history WHERE student_id NOT IN (SELECT id FROM students);");
+  } catch (e) {
+  }
+  db.run("PRAGMA foreign_keys = ON;");
+  persistDb();
+}
 function persistDb() {
   if (!db) return;
   try {
@@ -319,6 +545,13 @@ function persistDb() {
     fs.writeFileSync(DB_FILE, buffer);
   } catch (err) {
     console.error("Error saat menyimpan database ke disk:", err);
+  }
+  try {
+    const state = exportDatabaseState();
+    saveCloudSnapshot(state).catch((e) => {
+      console.warn("[CloudStorage] Async save warning:", e?.message || e);
+    });
+  } catch (err) {
   }
 }
 function query(sql, params = []) {
@@ -2974,6 +3207,230 @@ router11.post("/bulk-delete", (req, res) => {
 });
 var positiveRecords_default = router11;
 
+// server/src/routes/sync.ts
+import { Router as Router12 } from "express";
+var router12 = Router12();
+router12.get("/status", (req, res) => {
+  res.json({
+    status: "ok",
+    cloud: getActiveCloudProvider(),
+    serverTime: (/* @__PURE__ */ new Date()).toISOString()
+  });
+});
+router12.get("/state", (req, res) => {
+  try {
+    const state = exportDatabaseState();
+    res.json({
+      status: "ok",
+      cloud: getActiveCloudProvider(),
+      serverTime: (/* @__PURE__ */ new Date()).toISOString(),
+      state
+    });
+  } catch (err) {
+    console.error("Error in GET /api/sync/state:", err);
+    res.status(500).json({ error: err?.message || "Gagal mengekspor state database" });
+  }
+});
+router12.post("/state", async (req, res) => {
+  try {
+    const { clientState, delta } = req.body || {};
+    if (clientState && clientState.students) {
+      importDatabaseState(clientState);
+      return res.json({
+        success: true,
+        message: "State database berhasil diperbarui secara penuh",
+        cloud: getActiveCloudProvider(),
+        state: exportDatabaseState()
+      });
+    }
+    if (delta) {
+      if (Array.isArray(delta.deletedStudentIds)) {
+        for (const id of delta.deletedStudentIds) {
+          run("DELETE FROM student_halaqah_history WHERE student_id = ?", [id]);
+          run("DELETE FROM violation_records WHERE student_id = ?", [id]);
+          run("DELETE FROM positive_records WHERE student_id = ?", [id]);
+          run("DELETE FROM students WHERE id = ?", [id]);
+        }
+      }
+      if (Array.isArray(delta.deletedRecordIds)) {
+        for (const id of delta.deletedRecordIds) {
+          run("DELETE FROM violation_records WHERE id = ?", [id]);
+        }
+      }
+      if (Array.isArray(delta.deletedPosRecordIds)) {
+        for (const id of delta.deletedPosRecordIds) {
+          run("DELETE FROM positive_records WHERE id = ?", [id]);
+        }
+      }
+      if (Array.isArray(delta.deletedHalaqahIds)) {
+        for (const id of delta.deletedHalaqahIds) {
+          run("UPDATE students SET halaqah_id = NULL WHERE halaqah_id = ?", [id]);
+          run("DELETE FROM halaqah WHERE id = ?", [id]);
+        }
+      }
+      if (Array.isArray(delta.deletedTeacherIds)) {
+        for (const id of delta.deletedTeacherIds) {
+          run("UPDATE halaqah SET teacher_id = NULL WHERE teacher_id = ?", [id]);
+          run("DELETE FROM teachers WHERE id = ?", [id]);
+        }
+      }
+      if (Array.isArray(delta.deletedUserIds)) {
+        for (const id of delta.deletedUserIds) {
+          if (id !== "usr_admin_imbs") {
+            run("DELETE FROM users WHERE id = ?", [id]);
+          }
+        }
+      }
+      if (Array.isArray(delta.createdStudents)) {
+        for (const s of delta.createdStudents) {
+          const exists = get("SELECT id FROM students WHERE id = ? OR student_number = ?", [s.id, s.student_number]);
+          if (!exists) {
+            run(
+              `INSERT INTO students (id, student_number, name, class, gender, halaqah_id, academic_year, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                s.id,
+                s.student_number,
+                s.name,
+                s.class || "-",
+                s.gender || "L",
+                s.halaqah_id || null,
+                s.academic_year || "2025/2026",
+                s.status || "active",
+                s.created_at || (/* @__PURE__ */ new Date()).toISOString()
+              ]
+            );
+          }
+        }
+      }
+      if (Array.isArray(delta.createdHalaqahs)) {
+        for (const h of delta.createdHalaqahs) {
+          const exists = get("SELECT id FROM halaqah WHERE id = ?", [h.id]);
+          if (!exists) {
+            run(
+              `INSERT INTO halaqah (id, name, teacher_id, schedule, location, academic_year, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                h.id,
+                h.name,
+                h.teacher_id || null,
+                h.schedule || "Ba'da Subuh & Ba'da Maghrib",
+                h.location || "Masjid Utama",
+                h.academic_year || "2025/2026",
+                h.status || "active",
+                h.created_at || (/* @__PURE__ */ new Date()).toISOString()
+              ]
+            );
+          }
+        }
+      }
+      if (Array.isArray(delta.createdTeachers)) {
+        for (const t of delta.createdTeachers) {
+          const exists = get("SELECT id FROM teachers WHERE id = ?", [t.id]);
+          if (!exists) {
+            run(
+              `INSERT INTO teachers (id, user_id, name, phone, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              [t.id, t.user_id || null, t.name, t.phone || "", t.status || "active", t.created_at || (/* @__PURE__ */ new Date()).toISOString()]
+            );
+          }
+        }
+      }
+      if (Array.isArray(delta.createdRecords)) {
+        for (const r of delta.createdRecords) {
+          const exists = get("SELECT id FROM violation_records WHERE id = ?", [r.id]);
+          if (!exists) {
+            run(
+              `INSERT INTO violation_records (
+                id, student_id, division, halaqah_id, teacher_id, violation_id,
+                violation_name_snapshot, points_snapshot, halaqah_name_snapshot,
+                teacher_name_snapshot, student_class_snapshot, academic_year_snapshot,
+                date, time, notes, status, created_by, created_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                r.id,
+                r.student_id,
+                r.division || "tahfizh",
+                r.halaqah_id || null,
+                r.teacher_id || null,
+                r.violation_id || null,
+                r.violation_name_snapshot || "Pelanggaran",
+                r.points_snapshot || 0,
+                r.halaqah_name_snapshot || "-",
+                r.teacher_name_snapshot || "Pembina",
+                r.student_class_snapshot || "-",
+                r.academic_year_snapshot || "2025/2026",
+                r.date || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+                r.time || "00:00",
+                r.notes || "",
+                r.status || "active",
+                r.created_by || "Petugas",
+                r.created_at || (/* @__PURE__ */ new Date()).toISOString()
+              ]
+            );
+          }
+        }
+      }
+      if (Array.isArray(delta.createdPosRecords)) {
+        for (const pr of delta.createdPosRecords) {
+          const exists = get("SELECT id FROM positive_records WHERE id = ?", [pr.id]);
+          if (!exists) {
+            run(
+              `INSERT INTO positive_records (
+                id, student_id, division, action_id, action_name_snapshot, points_deducted,
+                halaqah_id, halaqah_name_snapshot, teacher_id, teacher_name_snapshot,
+                student_class_snapshot, academic_year_snapshot, date, time, notes, status, created_by, created_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                pr.id,
+                pr.student_id,
+                pr.division || "tahfizh",
+                pr.action_id || null,
+                pr.action_name_snapshot || "Kegiatan Baik",
+                pr.points_deducted || 0,
+                pr.halaqah_id || null,
+                pr.halaqah_name_snapshot || "-",
+                pr.teacher_id || null,
+                pr.teacher_name_snapshot || "Pembina",
+                pr.student_class_snapshot || "-",
+                pr.academic_year_snapshot || "2025/2026",
+                pr.date || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+                pr.time || "00:00",
+                pr.notes || "",
+                pr.status || "active",
+                pr.created_by || "Petugas",
+                pr.created_at || (/* @__PURE__ */ new Date()).toISOString()
+              ]
+            );
+          }
+        }
+      }
+      if (delta.cancelledRecords && typeof delta.cancelledRecords === "object") {
+        for (const [id, reason] of Object.entries(delta.cancelledRecords)) {
+          run("UPDATE violation_records SET status = 'cancelled', cancellation_reason = ? WHERE id = ?", [reason, id]);
+        }
+      }
+      if (delta.cancelledPosRecords && typeof delta.cancelledPosRecords === "object") {
+        for (const [id, reason] of Object.entries(delta.cancelledPosRecords)) {
+          run("UPDATE positive_records SET status = 'cancelled', cancellation_reason = ? WHERE id = ?", [reason, id]);
+        }
+      }
+      persistDb();
+    }
+    const state = exportDatabaseState();
+    return res.json({
+      success: true,
+      message: "Sinkronisasi berhasil diterapkan",
+      cloud: getActiveCloudProvider(),
+      state
+    });
+  } catch (err) {
+    console.error("Error in POST /api/sync/state:", err);
+    res.status(500).json({ error: err?.message || "Gagal memproses sinkronisasi" });
+  }
+});
+var sync_default = router12;
+
 // server/src/app.ts
 var app = express();
 app.use(cors());
@@ -2983,10 +3440,21 @@ var initPromise = null;
 async function ensureDbInitialized() {
   if (!initPromise) {
     initPromise = (async () => {
-      console.log("Menginisialisasi engine database SQLite & seeder...");
+      console.log("Menginisialisasi engine database SQLite & cloud persistence...");
       await getDb();
-      seedDatabase();
-      console.log("Engine database SQLite siap digunakan.");
+      try {
+        const cloudSnapshot = await loadCloudSnapshot();
+        if (cloudSnapshot && Array.isArray(cloudSnapshot.students) && cloudSnapshot.students.length > 0) {
+          console.log(`Memuat ${cloudSnapshot.students.length} data santri dari Cloud Snapshot...`);
+          importDatabaseState(cloudSnapshot);
+        } else {
+          seedDatabase();
+        }
+      } catch (e) {
+        console.warn("Gagal memeriksa cloud snapshot, menggunakan seeder lokal:", e?.message || e);
+        seedDatabase();
+      }
+      console.log("Engine database SQLite & cloud synchronization siap digunakan.");
     })().catch((err) => {
       initPromise = null;
       throw err;
@@ -3022,6 +3490,7 @@ apiRouter.use("/positive-actions", positiveActions_default);
 apiRouter.use("/positive-records", positiveRecords_default);
 apiRouter.use("/settings", settings_default);
 apiRouter.use("/audit-logs", audit_default);
+apiRouter.use("/sync", sync_default);
 apiRouter.get("/health", (req, res) => {
   res.json({ status: "ok", serverless: !!process.env.VERCEL, time: (/* @__PURE__ */ new Date()).toISOString() });
 });

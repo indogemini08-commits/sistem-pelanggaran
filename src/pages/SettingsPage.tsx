@@ -16,6 +16,13 @@ import {
   Phone,
   Mail,
   MapPin,
+  Cloud,
+  RefreshCw,
+  Download,
+  Database,
+  Share2,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { SchoolSettings, PointThreshold, User } from '../types';
 import { api } from '../services/api';
@@ -32,7 +39,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   settings,
   onSettingsUpdated,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'school' | 'thresholds'>('school');
+  const [activeSubTab, setActiveSubTab] = useState<'school' | 'thresholds' | 'sync'>('school');
+
+  // Cloud Sync state
+  const [cloudInfo, setCloudInfo] = useState<{ provider: string; isConnected: boolean; details: string } | null>(null);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [copiedLink, setCopiedLink] = useState<boolean>(false);
 
   // School Settings form
   const [appName, setAppName] = useState<string>('');
@@ -46,6 +58,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
   // Device Logo Upload state
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
   const [logoFileError, setLogoFileError] = useState<string>('');
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
@@ -58,7 +71,87 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
   useEffect(() => {
     loadSettings();
+    loadCloudInfo();
   }, []);
+
+  const loadCloudInfo = async () => {
+    try {
+      const res = await api.sync.getStatus();
+      setCloudInfo(res.cloud);
+    } catch (e) {
+      console.warn('Gagal memuat status cloud:', e);
+    }
+  };
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    setSuccessMsg('');
+    setErrorMsg('');
+    try {
+      const res = await api.sync.syncWithServer();
+      if (res.success) {
+        setSuccessMsg('Semua data berhasil disinkronkan dengan server dan perangkat lain!');
+        onSettingsUpdated();
+        await loadCloudInfo();
+      } else {
+        setErrorMsg('Gagal menyinkronkan data. Pastikan koneksi internet aktif.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Gagal menyinkronkan');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleDownloadBackup = async () => {
+    try {
+      const res = await api.sync.getState();
+      const jsonStr = JSON.stringify(res.state, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `backup_halaqah_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setSuccessMsg('Cadangan data berhasil diunduh.');
+    } catch (e: any) {
+      setErrorMsg('Gagal mengunduh cadangan: ' + e?.message);
+    }
+  };
+
+  const handleRestoreBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const json = JSON.parse(ev.target?.result as string);
+        if (!json.students && !json.users) {
+          throw new Error('File cadangan tidak valid (format data tidak sesuai).');
+        }
+        await fetch('/api/sync/state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientState: json }),
+        });
+        setSuccessMsg('Cadangan data berhasil dipulihkan secara penuh! Memuat ulang sistem...');
+        onSettingsUpdated();
+        setTimeout(() => window.location.reload(), 1200);
+      } catch (err: any) {
+        setErrorMsg('Gagal memulihkan cadangan: ' + err?.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleCopyShareLink = () => {
+    if (typeof window !== 'undefined') {
+      navigator.clipboard.writeText(window.location.origin);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    }
+  };
 
   const loadSettings = async () => {
     try {
@@ -200,14 +293,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       </div>
 
       {/* Tabs Switcher */}
-      <div className="flex items-center gap-2 p-1.5 bg-slate-200/70 rounded-2xl max-w-md border border-slate-200/80">
+      <div className="flex items-center gap-2 p-1.5 bg-slate-200/70 rounded-2xl max-w-xl border border-slate-200/80">
         <button
           onClick={() => {
             setActiveSubTab('school');
             setSuccessMsg('');
             setErrorMsg('');
           }}
-          className={`flex-1 py-2.5 px-4 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 rounded-xl transition-all ${
+          className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 rounded-xl transition-all ${
             activeSubTab === 'school'
               ? 'bg-white text-brand-700 shadow-sm'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
@@ -223,7 +316,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             setSuccessMsg('');
             setErrorMsg('');
           }}
-          className={`flex-1 py-2.5 px-4 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 rounded-xl transition-all ${
+          className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 rounded-xl transition-all ${
             activeSubTab === 'thresholds'
               ? 'bg-white text-brand-700 shadow-sm'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
@@ -231,6 +324,23 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         >
           <Sliders className="w-4 h-4" />
           <span>Batas Poin (Status)</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveSubTab('sync');
+            setSuccessMsg('');
+            setErrorMsg('');
+            loadCloudInfo();
+          }}
+          className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 rounded-xl transition-all ${
+            activeSubTab === 'sync'
+              ? 'bg-white text-brand-700 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <Cloud className="w-4 h-4" />
+          <span>Sinkronisasi Cloud</span>
         </button>
       </div>
 
@@ -639,6 +749,137 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </div>
         </form>
       )}
+
+      {/* Tab 3: Sinkronisasi Multi-Perangkat & Cloud */}
+      {activeSubTab === 'sync' && (
+        <div className="space-y-6">
+          {/* Cloud Persistence Status Card */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm relative overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className={`p-3 rounded-2xl ${cloudInfo?.isConnected ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-brand-50 text-brand-600 border border-brand-200'}`}>
+                  <Cloud className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-slate-900">Status Penyimpanan & Sinkronisasi Cloud</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Memastikan data sinkron ketika link web app dibuka di HP, laptop, atau perangkat lain</p>
+                </div>
+              </div>
+
+              <div>
+                {cloudInfo?.isConnected ? (
+                  <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-black bg-emerald-100/80 text-emerald-800 border border-emerald-300 shadow-sm">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    {cloudInfo.provider === 'postgres' ? 'Cloud Postgres (Neon) Terhubung' : 'Cloud Storage Terhubung'}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-black bg-amber-100/80 text-amber-800 border border-amber-300 shadow-sm">
+                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                    Sinkronisasi Klien & Serverless Aktif
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/70 text-xs sm:text-sm text-slate-700 leading-relaxed">
+                <p className="font-bold text-slate-900 mb-1">Informasi Infrastruktur:</p>
+                <p>{cloudInfo?.details || 'Memuat status server...'}</p>
+              </div>
+
+              {!cloudInfo?.isConnected && (
+                <div className="p-5 bg-gradient-to-br from-brand-50/50 to-indigo-50/40 rounded-2xl border border-brand-200/70 text-xs sm:text-sm text-slate-700">
+                  <div className="flex items-center gap-2 text-brand-900 font-bold mb-2">
+                    <Database className="w-4 h-4 text-brand-600" />
+                    <span>Cara Mengaktifkan Cloud Database Bersama di Vercel (Gratis 100%):</span>
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1.5 text-xs text-slate-600 pl-1">
+                    <li>Buka dashboard Vercel Anda di <code className="bg-white px-1.5 py-0.5 rounded text-brand-700 font-semibold border border-brand-200">vercel.com</code></li>
+                    <li>Pilih proyek Anda <strong className="text-slate-800">sistem-pelanggaran</strong></li>
+                    <li>Klik tab <strong className="text-slate-800">Storage</strong> di bagian atas</li>
+                    <li>Klik tombol <strong className="text-slate-800">Connect Store</strong> &rarr; pilih <strong className="text-brand-700">Postgres (Neon)</strong> atau <strong className="text-brand-700">KV</strong></li>
+                    <li>Klik <strong className="text-slate-800">Connect</strong>. Vercel akan otomatis menyuntikkan database cloud bersama tanpa perlu konfigurasi manual!</li>
+                  </ol>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Action Hub Card */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Sync Now & Share Link */}
+            <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/80 shadow-sm space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-200">
+                  <RefreshCw className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Sinkronisasi Sekarang</h3>
+                  <p className="text-xs text-slate-500">Perbarui data perangkat ini dengan data terbaru dari server</p>
+                </div>
+              </div>
+
+              <div className="pt-2 flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={handleManualSync}
+                  disabled={isSyncing}
+                  className="flex-1 py-3 px-4 bg-brand-600 hover:bg-brand-500 text-white font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>{isSyncing ? 'Menyinkronkan...' : 'Sinkronkan Sekarang'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCopyShareLink}
+                  className="py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl border border-slate-200 transition-all flex items-center justify-center gap-2 text-xs sm:text-sm"
+                >
+                  {copiedLink ? <Check className="w-4 h-4 text-emerald-600" /> : <Share2 className="w-4 h-4" />}
+                  <span>{copiedLink ? 'Tautan Disalin!' : 'Bagikan Tautan'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Backup & Restore */}
+            <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/80 shadow-sm space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-200">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Cadangan & Pemulihan (JSON)</h3>
+                  <p className="text-xs text-slate-500">Amankan data santri, poin, dan pengaturan atau pindahkan ke perangkat lain</p>
+                </div>
+              </div>
+
+              <div className="pt-2 flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={handleDownloadBackup}
+                  className="flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-xs sm:text-sm"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Unduh Cadangan</span>
+                </button>
+
+                <label className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl border border-slate-200 transition-all flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer text-center">
+                  <Upload className="w-4 h-4" />
+                  <span>Pulihkan Data</span>
+                  <input
+                    ref={backupInputRef}
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={handleRestoreBackup}
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

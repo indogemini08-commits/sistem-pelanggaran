@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, SchoolSettings } from './types';
 import { api } from './services/api';
+import { storageSync } from './services/storageSync';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -40,7 +41,7 @@ export function App() {
   const [isQuickRewardOpen, setIsQuickRewardOpen] = useState<boolean>(false);
   const [appLoading, setAppLoading] = useState<boolean>(true);
 
-  // Load user session and settings on mount
+  // Load user session, settings, and trigger multi-device server synchronization on mount
   useEffect(() => {
     const savedUser =
       localStorage.getItem('halaqah_user') || sessionStorage.getItem('halaqah_user');
@@ -53,7 +54,20 @@ export function App() {
       }
     }
 
-    loadSettings();
+    // Synchronize with server to ensure multi-device consistency
+    storageSync.syncWithServer().finally(() => {
+      loadSettings();
+    });
+
+    // Re-sync whenever user returns to the tab or browser window
+    const handleWindowFocus = () => {
+      storageSync.syncWithServer().catch(() => {});
+    };
+
+    window.addEventListener('focus', handleWindowFocus);
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+    };
   }, []);
 
   const loadSettings = async () => {

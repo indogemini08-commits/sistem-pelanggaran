@@ -1,7 +1,8 @@
 import express from 'express';
 import cors from 'cors';
-import { getDb } from './db/database';
+import { getDb, importDatabaseState } from './db/database';
 import { seedDatabase } from './db/seed';
+import { loadCloudSnapshot } from './db/cloudStorage';
 
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
@@ -14,6 +15,7 @@ import settingsRoutes from './routes/settings';
 import auditRoutes from './routes/audit';
 import positiveActionsRoutes from './routes/positiveActions';
 import positiveRecordsRoutes from './routes/positiveRecords';
+import syncRoutes from './routes/sync';
 
 const app = express();
 
@@ -26,10 +28,24 @@ let initPromise: Promise<void> | null = null;
 export async function ensureDbInitialized(): Promise<void> {
   if (!initPromise) {
     initPromise = (async () => {
-      console.log('Menginisialisasi engine database SQLite & seeder...');
+      console.log('Menginisialisasi engine database SQLite & cloud persistence...');
       await getDb();
-      seedDatabase();
-      console.log('Engine database SQLite siap digunakan.');
+
+      // Check if a cloud snapshot exists in Postgres, Vercel KV, or Blob
+      try {
+        const cloudSnapshot = await loadCloudSnapshot();
+        if (cloudSnapshot && Array.isArray(cloudSnapshot.students) && cloudSnapshot.students.length > 0) {
+          console.log(`Memuat ${cloudSnapshot.students.length} data santri dari Cloud Snapshot...`);
+          importDatabaseState(cloudSnapshot);
+        } else {
+          seedDatabase();
+        }
+      } catch (e: any) {
+        console.warn('Gagal memeriksa cloud snapshot, menggunakan seeder lokal:', e?.message || e);
+        seedDatabase();
+      }
+
+      console.log('Engine database SQLite & cloud synchronization siap digunakan.');
     })().catch((err) => {
       initPromise = null; // Reset on failure so subsequent requests can retry
       throw err;
@@ -71,6 +87,7 @@ apiRouter.use('/positive-actions', positiveActionsRoutes);
 apiRouter.use('/positive-records', positiveRecordsRoutes);
 apiRouter.use('/settings', settingsRoutes);
 apiRouter.use('/audit-logs', auditRoutes);
+apiRouter.use('/sync', syncRoutes);
 
 apiRouter.get('/health', (req, res) => {
   res.json({ status: 'ok', serverless: !!process.env.VERCEL, time: new Date().toISOString() });

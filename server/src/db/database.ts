@@ -147,6 +147,101 @@ function runMigrations(database: Database) {
   }
 }
 
+import { saveCloudSnapshot } from './cloudStorage';
+
+export interface DatabaseSnapshot {
+  version: number;
+  timestamp: string;
+  users: any[];
+  teachers: any[];
+  halaqah: any[];
+  students: any[];
+  student_halaqah_history: any[];
+  violations: any[];
+  violation_records: any[];
+  positive_actions: any[];
+  positive_records: any[];
+  school_settings: any[];
+  point_thresholds: any[];
+}
+
+export function exportDatabaseState(): DatabaseSnapshot {
+  if (!db) throw new Error('Database belum diinisialisasi');
+  const tables = [
+    'users',
+    'teachers',
+    'halaqah',
+    'students',
+    'student_halaqah_history',
+    'violations',
+    'violation_records',
+    'positive_actions',
+    'positive_records',
+    'school_settings',
+    'point_thresholds',
+  ];
+  const state: any = {
+    version: 1,
+    timestamp: new Date().toISOString(),
+  };
+  for (const t of tables) {
+    try {
+      state[t] = query(`SELECT * FROM ${t}`);
+    } catch {
+      state[t] = [];
+    }
+  }
+  return state as DatabaseSnapshot;
+}
+
+export function importDatabaseState(snapshot: Partial<DatabaseSnapshot>): void {
+  if (!db) throw new Error('Database belum diinisialisasi');
+  const tables = [
+    'point_thresholds',
+    'school_settings',
+    'users',
+    'teachers',
+    'halaqah',
+    'students',
+    'student_halaqah_history',
+    'violations',
+    'violation_records',
+    'positive_actions',
+    'positive_records',
+  ];
+
+  db.run('PRAGMA foreign_keys = OFF;');
+
+  for (const t of tables) {
+    const rows = (snapshot as any)[t];
+    if (Array.isArray(rows) && rows.length > 0) {
+      try {
+        db.run(`DELETE FROM ${t};`);
+        const cols = Object.keys(rows[0]);
+        const placeholders = cols.map(() => '?').join(',');
+        const sql = `INSERT INTO ${t} (${cols.join(',')}) VALUES (${placeholders});`;
+        const stmt = db.prepare(sql);
+        for (const row of rows) {
+          stmt.run(cols.map((col) => row[col]));
+        }
+        stmt.free();
+      } catch (err) {
+        console.warn(`Gagal mengimpor tabel ${t}:`, err);
+      }
+    }
+  }
+
+  // Cleanup orphaned records
+  try {
+    db.run("DELETE FROM violation_records WHERE student_id NOT IN (SELECT id FROM students);");
+    db.run("DELETE FROM positive_records WHERE student_id NOT IN (SELECT id FROM students);");
+    db.run("DELETE FROM student_halaqah_history WHERE student_id NOT IN (SELECT id FROM students);");
+  } catch (e) {}
+
+  db.run('PRAGMA foreign_keys = ON;');
+  persistDb();
+}
+
 export function persistDb() {
   if (!db) return;
   try {
@@ -155,6 +250,16 @@ export function persistDb() {
     fs.writeFileSync(DB_FILE, buffer);
   } catch (err) {
     console.error('Error saat menyimpan database ke disk:', err);
+  }
+
+  // Asynchronously push snapshot to cloud storage if configured
+  try {
+    const state = exportDatabaseState();
+    saveCloudSnapshot(state).catch((e) => {
+      console.warn('[CloudStorage] Async save warning:', e?.message || e);
+    });
+  } catch (err) {
+    // Non-blocking
   }
 }
 

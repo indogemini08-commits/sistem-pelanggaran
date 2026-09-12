@@ -390,12 +390,131 @@ export const storageSync = {
   resetToDemo() {
     if (typeof window === 'undefined' || !window.localStorage) return;
     Object.values(KEYS).forEach((k) => window.localStorage.removeItem(k));
+    safeSetItem('imbs_cached_server_state', null);
     this.notifyDataChange({ action: 'reset', resource: 'all' });
+  },
+
+  // === CACHED SERVER STATE (Offline Fallback & Fast Hydration) ===
+  getCachedServerState(): any | null {
+    return safeGetItem<any | null>('imbs_cached_server_state', null);
+  },
+
+  saveCachedServerState(state: any) {
+    safeSetItem('imbs_cached_server_state', state);
+  },
+
+  // === MULTI-DEVICE CLOUD SYNCHRONIZATION ===
+  getPendingDelta() {
+    const createdStudents = this.getCreatedStudents();
+    const deletedStudentIds = Array.from(this.getDeletedStudentIds());
+    const createdRecords = this.getCreatedRecords();
+    const deletedRecordIds = Array.from(this.getDeletedRecordIds());
+    const cancelledRecords = this.getCancelledRecords();
+    const createdPosRecords = this.getCreatedPosRecords();
+    const deletedPosRecordIds = Array.from(this.getDeletedPosRecordIds());
+    const cancelledPosRecords = this.getCancelledPosRecords();
+    const createdHalaqahs = this.getCreatedHalaqahs();
+    const deletedHalaqahIds = Array.from(this.getDeletedHalaqahIds());
+    const createdTeachers = this.getCreatedTeachers();
+    const deletedTeacherIds = Array.from(this.getDeletedTeacherIds());
+    const createdUsers = this.getCreatedUsers();
+    const deletedUserIds = Array.from(this.getDeletedUserIds());
+
+    const hasPending =
+      createdStudents.length > 0 ||
+      deletedStudentIds.length > 0 ||
+      createdRecords.length > 0 ||
+      deletedRecordIds.length > 0 ||
+      Object.keys(cancelledRecords).length > 0 ||
+      createdPosRecords.length > 0 ||
+      deletedPosRecordIds.length > 0 ||
+      Object.keys(cancelledPosRecords).length > 0 ||
+      createdHalaqahs.length > 0 ||
+      deletedHalaqahIds.length > 0 ||
+      createdTeachers.length > 0 ||
+      deletedTeacherIds.length > 0 ||
+      createdUsers.length > 0 ||
+      deletedUserIds.length > 0;
+
+    return {
+      hasPending,
+      delta: {
+        createdStudents,
+        deletedStudentIds,
+        createdRecords,
+        deletedRecordIds,
+        cancelledRecords,
+        createdPosRecords,
+        deletedPosRecordIds,
+        cancelledPosRecords,
+        createdHalaqahs,
+        deletedHalaqahIds,
+        createdTeachers,
+        deletedTeacherIds,
+        createdUsers,
+        deletedUserIds,
+      },
+    };
+  },
+
+  clearPendingDelta() {
+    safeSetItem(KEYS.CREATED_STUDENTS, []);
+    safeSetItem(KEYS.DELETED_STUDENTS, []);
+    safeSetItem(KEYS.CREATED_RECORDS, []);
+    safeSetItem(KEYS.DELETED_RECORDS, []);
+    safeSetItem(KEYS.CANCELLED_RECORDS, {});
+    safeSetItem(KEYS.CREATED_POS_RECORDS, []);
+    safeSetItem(KEYS.DELETED_POS_RECORDS, []);
+    safeSetItem(KEYS.CANCELLED_POS_RECORDS, {});
+    safeSetItem(KEYS.CREATED_HALAQAHS, []);
+    safeSetItem(KEYS.DELETED_HALAQAHS, []);
+    safeSetItem(KEYS.CREATED_TEACHERS, []);
+    safeSetItem(KEYS.DELETED_TEACHERS, []);
+    safeSetItem(KEYS.CREATED_USERS, []);
+    safeSetItem(KEYS.DELETED_USERS, []);
+  },
+
+  async syncWithServer(): Promise<{ success: boolean; cloud?: any; state?: any; offline?: boolean }> {
+    const apiBase = (import.meta as any).env?.VITE_API_URL || '/api';
+    const { hasPending, delta } = this.getPendingDelta();
+
+    try {
+      if (hasPending) {
+        // Push local delta to server
+        const res = await fetch(`${apiBase}/sync/state`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ delta }),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          this.clearPendingDelta();
+          if (json.state) {
+            this.saveCachedServerState(json.state);
+          }
+          this.notifyDataChange({ action: 'sync_completed', resource: 'all' });
+          return { success: true, cloud: json.cloud, state: json.state };
+        }
+      }
+
+      // If no pending delta, pull current master state from server
+      const res = await fetch(`${apiBase}/sync/state`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.state) {
+          this.saveCachedServerState(json.state);
+        }
+        return { success: true, cloud: json.cloud, state: json.state };
+      }
+    } catch (err) {
+      console.warn('[Sync] Server sync warning (offline or cold boot):', err);
+    }
+
+    return { success: false, offline: true, state: this.getCachedServerState() };
   },
 
   // === RECONCILE: Keep deletions permanently to protect against Vercel cold-boot re-seeding ===
   reconcileDeletedStudentIds(_serverStudentIds: string[]) {
-    // Intentionally retained: do not auto-delete from localStorage so Vercel lambda cold restarts
-    // cannot resurrect deleted students.
+    // Retained for backward-compatibility
   },
 };
