@@ -58,13 +58,7 @@ export const ParentPortalPage: React.FC<ParentPortalPageProps> = ({
   const [activeTab, setActiveTab] = useState<'pelanggaran' | 'kebaikan' | 'panduan'>('pelanggaran');
   const [filterDivision, setFilterDivision] = useState<'all' | 'tahfizh' | 'kesantrian'>('all');
 
-  // Quick Demo Chips
-  const demoChips = [
-    { nis: '2025001', name: 'Muhammad Abdullah', class: '8A' },
-    { nis: '2025005', name: 'Hasan Al-Banna', class: '8B' },
-    { nis: '2025003', name: 'Ibrahim Malik', class: '7B' },
-    { nis: '2025008', name: 'Ali Zainal', class: '9A' },
-  ];
+
 
   // Auto-load if initialNis provided or from URL search params
   useEffect(() => {
@@ -106,10 +100,7 @@ export const ParentPortalPage: React.FC<ParentPortalPageProps> = ({
     fetchStudentByNis(searchNis);
   };
 
-  const handleSelectChip = (nis: string) => {
-    setSearchNis(nis);
-    fetchStudentByNis(nis);
-  };
+
 
   const handleResetSearch = () => {
     setSearchNis('');
@@ -275,21 +266,7 @@ export const ParentPortalPage: React.FC<ParentPortalPageProps> = ({
               </div>
             </form>
 
-            {/* Quick Demo Chips */}
-            <div className="pt-1 flex items-center gap-2 flex-wrap text-xs text-slate-400">
-              <span className="font-semibold text-slate-300">Contoh Coba Cepat:</span>
-              {demoChips.map((c) => (
-                <button
-                  key={c.nis}
-                  type="button"
-                  onClick={() => handleSelectChip(c.nis)}
-                  className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 text-slate-300 hover:text-white transition-all cursor-pointer flex items-center gap-1 text-[11px]"
-                >
-                  <span className="font-mono text-emerald-400 font-bold">{c.nis}</span>
-                  <span>({c.name})</span>
-                </button>
-              ))}
-            </div>
+
 
             {/* Error Message if any */}
             {errorMsg && (
@@ -367,57 +344,149 @@ export const ParentPortalPage: React.FC<ParentPortalPageProps> = ({
                 </div>
 
                 {/* Right: Status Kedisiplinan Badge */}
-                <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-700/80 flex flex-col items-start md:items-end justify-center gap-1.5 shrink-0 min-w-[220px]">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    Status Kedisiplinan:
-                  </span>
-                  <span
-                    className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-sm font-black border shadow-md ${
-                      portalData.student.status_info?.badgeColor === 'emerald'
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40'
-                        : portalData.student.status_info?.badgeColor === 'amber'
-                        ? 'bg-amber-500/20 text-amber-300 border-amber-400/40'
-                        : portalData.student.status_info?.badgeColor === 'orange'
-                        ? 'bg-orange-500/20 text-orange-300 border-orange-400/40'
-                        : portalData.student.status_info?.badgeColor === 'rose'
-                        ? 'bg-rose-500/20 text-rose-300 border-rose-400/40'
-                        : 'bg-red-500/20 text-red-300 border-red-400/40'
-                    }`}
-                  >
-                    <span className="w-2.5 h-2.5 rounded-full bg-current animate-ping" />
-                    <span>{portalData.student.status_info?.statusName || 'AMAN'}</span>
-                  </span>
-                  <p className="text-[11px] text-slate-400 max-w-xs text-left md:text-right">
-                    {portalData.student.status_info?.description || 'Kondisi hafalan dan akhlak dalam batas baik.'}
-                  </p>
-                </div>
+                {(() => {
+                  const netPts = Number(portalData.student.total_points || 0);
+                  const isAman = netPts < 20;
+                  const badgeColor = isAman
+                    ? 'emerald'
+                    : (portalData.student.status_info?.badgeColor || (netPts < 50 ? 'amber' : netPts < 75 ? 'orange' : 'rose'));
+                  const statusName = isAman
+                    ? 'AMAN'
+                    : (portalData.student.status_info?.statusName || 'PERLU PEMBINAAN');
+                  const desc = isAman
+                    ? 'Alhamdulillah, kedisiplinan dan hafalan ananda dalam kondisi aman & tertib.'
+                    : (portalData.student.status_info?.description || 'Perlu bimbingan dan pemantauan berkala.');
+
+                  const colorClasses =
+                    badgeColor === 'emerald'
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50 shadow-emerald-950/40'
+                      : badgeColor === 'amber'
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-400/50 shadow-amber-950/40'
+                      : badgeColor === 'orange'
+                      ? 'bg-orange-500/20 text-orange-300 border-orange-400/50 shadow-orange-950/40'
+                      : badgeColor === 'rose'
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-400/50 shadow-rose-950/40'
+                      : 'bg-red-500/20 text-red-300 border-red-400/50 shadow-red-950/40';
+
+                  const dotColor =
+                    badgeColor === 'emerald'
+                      ? 'bg-emerald-400'
+                      : badgeColor === 'amber'
+                      ? 'bg-amber-400'
+                      : badgeColor === 'orange'
+                      ? 'bg-orange-400'
+                      : 'bg-rose-400';
+
+                  return (
+                    <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-700/80 flex flex-col items-start md:items-end justify-center gap-1.5 shrink-0 min-w-[220px]">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        Status Kedisiplinan:
+                      </span>
+                      <span
+                        className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-sm font-black border shadow-md ${colorClasses}`}
+                      >
+                        <span className={`w-2.5 h-2.5 rounded-full ${dotColor} ${isAman ? 'animate-pulse' : 'animate-ping'}`} />
+                        <span>{statusName}</span>
+                      </span>
+                      <p className="text-[11px] text-slate-400 max-w-xs text-left md:text-right">
+                        {desc}
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Threshold Meter Visualizer */}
-              <div className="pt-4 border-t border-slate-700/80 space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold">
-                  <span className="text-slate-400">Tingkat Akumulasi Poin Sanksi:</span>
-                  <span className="text-white font-mono">
-                    {portalData.student.total_points || 0} Poin Pelanggaran Netto
-                  </span>
-                </div>
+              {(() => {
+                const netPts = Number(portalData.student.total_points || 0);
+                const isAman = netPts < 20;
+                // Progress percentage: 0-100 scale (capped at 100)
+                const percent = Math.min(100, Math.max(isAman ? Math.min(20, (netPts / 20) * 20) : 20, (netPts / 100) * 100));
 
-                <div className="w-full bg-slate-900 rounded-full h-3.5 overflow-hidden p-0.5 border border-slate-700 flex gap-0.5">
-                  <div className="h-full bg-emerald-500 rounded-l-full" style={{ width: '20%' }} title="0-19: Aman" />
-                  <div className="h-full bg-amber-500" style={{ width: '30%' }} title="20-49: Pembinaan" />
-                  <div className="h-full bg-orange-500" style={{ width: '25%' }} title="50-74: Khusus" />
-                  <div className="h-full bg-rose-500" style={{ width: '15%' }} title="75-99: SP Resmi" />
-                  <div className="h-full bg-red-600 rounded-r-full" style={{ width: '10%' }} title="100+: Sidang" />
-                </div>
+                return (
+                  <div className="pt-4 border-t border-slate-700/80 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs font-bold">
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-400">Tingkat Akumulasi Poin Sanksi:</span>
+                        {isAman ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                            Zona Hijau (Aman & Bebas SP)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[11px] font-bold">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                            Tahap Pembinaan
+                          </span>
+                        )}
+                      </div>
+                      <span className={`font-mono text-sm font-bold ${isAman ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        {netPts} Poin Pelanggaran Netto
+                      </span>
+                    </div>
 
-                <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold pt-0.5">
-                  <span>0 Pts (Aman)</span>
-                  <span>20 Pts</span>
-                  <span>50 Pts</span>
-                  <span>75 Pts (SP)</span>
-                  <span>100+ Pts</span>
-                </div>
-              </div>
+                    {/* Dynamic Status Progress Bar */}
+                    <div className="w-full bg-slate-900 rounded-full h-3 overflow-hidden p-0.5 border border-slate-700 relative">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          isAman
+                            ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-[0_0_12px_rgba(16,185,129,0.5)]'
+                            : netPts < 50
+                            ? 'bg-gradient-to-r from-amber-500 to-yellow-400 shadow-[0_0_12px_rgba(245,158,11,0.5)]'
+                            : netPts < 75
+                            ? 'bg-gradient-to-r from-orange-500 to-amber-500'
+                            : 'bg-gradient-to-r from-rose-600 to-red-600'
+                        }`}
+                        style={{ width: `${Math.max(5, percent)}%` }}
+                      />
+                    </div>
+
+                    {/* Zone markers with active zone highlighted */}
+                    <div className="grid grid-cols-5 gap-1.5 pt-0.5 text-[10px] font-semibold text-center">
+                      <div className={`p-1.5 rounded-xl border transition-all ${
+                        isAman
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50 shadow-sm ring-1 ring-emerald-400/30'
+                          : 'bg-slate-900/40 text-slate-500 border-slate-800'
+                      }`}>
+                        <span className="block font-bold">0 - 19</span>
+                        <span className="text-[9px]">Aman</span>
+                      </div>
+                      <div className={`p-1.5 rounded-xl border transition-all ${
+                        netPts >= 20 && netPts < 50
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-400/50 shadow-sm ring-1 ring-amber-400/30'
+                          : 'bg-slate-900/40 text-slate-500 border-slate-800'
+                      }`}>
+                        <span className="block font-bold">20 - 49</span>
+                        <span className="text-[9px]">Pembinaan</span>
+                      </div>
+                      <div className={`p-1.5 rounded-xl border transition-all ${
+                        netPts >= 50 && netPts < 75
+                          ? 'bg-orange-500/20 text-orange-300 border-orange-400/50 shadow-sm ring-1 ring-orange-400/30'
+                          : 'bg-slate-900/40 text-slate-500 border-slate-800'
+                      }`}>
+                        <span className="block font-bold">50 - 74</span>
+                        <span className="text-[9px]">Khusus</span>
+                      </div>
+                      <div className={`p-1.5 rounded-xl border transition-all ${
+                        netPts >= 75 && netPts < 100
+                          ? 'bg-rose-500/20 text-rose-300 border-rose-400/50 shadow-sm ring-1 ring-rose-400/30'
+                          : 'bg-slate-900/40 text-slate-500 border-slate-800'
+                      }`}>
+                        <span className="block font-bold">75 - 99</span>
+                        <span className="text-[9px]">SP Resmi</span>
+                      </div>
+                      <div className={`p-1.5 rounded-xl border transition-all ${
+                        netPts >= 100
+                          ? 'bg-red-500/20 text-red-300 border-red-400/50 shadow-sm ring-1 ring-red-400/30'
+                          : 'bg-slate-900/40 text-slate-500 border-slate-800'
+                      }`}>
+                        <span className="block font-bold">100+</span>
+                        <span className="text-[9px]">Sidang</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Direct Contact Teacher / School */}
               {portalData.student.teacher_phone && (
@@ -442,18 +511,48 @@ export const ParentPortalPage: React.FC<ParentPortalPageProps> = ({
             {/* Metrics 4-Grid Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               {/* Total Poin Netto */}
-              <div className="bg-slate-800/80 p-4 sm:p-5 rounded-2xl border border-slate-700 shadow-md">
-                <div className="flex items-center gap-1.5 text-slate-400 text-xs font-bold uppercase mb-1">
-                  <AlertTriangle className="w-4 h-4 text-rose-400" />
-                  <span>Total Poin Netto</span>
-                </div>
-                <p className="text-2xl sm:text-3xl font-black text-rose-400 font-mono">
-                  {portalData.student.total_points || 0}
-                </p>
-                <span className="text-[11px] text-slate-400 mt-1 block">
-                  Akumulasi terpadu setelah apresiasi
-                </span>
-              </div>
+              {(() => {
+                const netPts = Number(portalData.student.total_points || 0);
+                const isAman = netPts < 20;
+
+                return (
+                  <div className={`p-4 sm:p-5 rounded-2xl border shadow-md transition-all ${
+                    isAman
+                      ? 'bg-slate-800/90 border-emerald-500/40 shadow-emerald-950/20'
+                      : netPts < 50
+                      ? 'bg-slate-800/90 border-amber-500/40 shadow-amber-950/20'
+                      : 'bg-slate-800/90 border-rose-500/40 shadow-rose-950/20'
+                  }`}>
+                    <div className="flex items-center gap-1.5 text-xs font-bold uppercase mb-1">
+                      {isAman ? (
+                        <>
+                          <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                          <span className="text-emerald-300">Total Poin Netto</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className={`w-4 h-4 ${netPts < 50 ? 'text-amber-400' : 'text-rose-400'}`} />
+                          <span className="text-slate-300">Total Poin Netto</span>
+                        </>
+                      )}
+                    </div>
+                    <p className={`text-2xl sm:text-3xl font-black font-mono ${
+                      isAman
+                        ? 'text-emerald-400'
+                        : netPts < 50
+                        ? 'text-amber-400'
+                        : 'text-rose-400'
+                    }`}>
+                      {netPts}
+                    </p>
+                    <span className={`text-[11px] mt-1 block font-medium ${
+                      isAman ? 'text-emerald-300/80' : 'text-slate-400'
+                    }`}>
+                      {isAman ? 'Kondisi aman & bersih dari sanksi' : 'Akumulasi terpadu setelah apresiasi'}
+                    </span>
+                  </div>
+                );
+              })()}
 
               {/* Pelanggaran Tahfizh */}
               <div className="bg-slate-800/80 p-4 sm:p-5 rounded-2xl border border-slate-700 shadow-md">
@@ -505,11 +604,17 @@ export const ParentPortalPage: React.FC<ParentPortalPageProps> = ({
                 onClick={() => setActiveTab('pelanggaran')}
                 className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
                   activeTab === 'pelanggaran'
-                    ? 'bg-rose-500/20 text-rose-300 border border-rose-400/30 shadow-sm'
+                    ? portalData.records.length > 0
+                      ? 'bg-rose-500/20 text-rose-300 border border-rose-400/30 shadow-sm'
+                      : 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <AlertTriangle className="w-4 h-4" />
+                {portalData.records.length > 0 ? (
+                  <AlertTriangle className="w-4 h-4 text-rose-400" />
+                ) : (
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                )}
                 <span>Catatan Pelanggaran ({portalData.records.length})</span>
               </button>
 

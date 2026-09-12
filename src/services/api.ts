@@ -9,6 +9,7 @@ import {
   PositiveRecord,
   SchoolSettings,
   PointThreshold,
+  StudentThresholdStatus,
   DashboardStats,
   AuditLog,
 } from '../types';
@@ -42,6 +43,41 @@ async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> 
   }
 
   return (data ?? {}) as T;
+}
+
+export function getStatusForPoints(points: number, thresholds: PointThreshold[] = []): StudentThresholdStatus {
+  if (thresholds && thresholds.length > 0) {
+    for (const th of thresholds) {
+      if (points >= th.minimum_points && points <= th.maximum_points) {
+        return {
+          statusName: th.status_name,
+          badgeColor: th.badge_color || (points < 20 ? 'emerald' : points < 50 ? 'amber' : points < 75 ? 'orange' : 'rose'),
+          description: th.description || 'Kedisiplinan dan capaian hafalan santri dalam batas baik.',
+        };
+      }
+    }
+    const highest = thresholds[thresholds.length - 1];
+    if (points >= highest.minimum_points) {
+      return {
+        statusName: highest.status_name,
+        badgeColor: highest.badge_color || 'red',
+        description: highest.description || 'Evaluasi kelanjutan kepesertaan santri.',
+      };
+    }
+  }
+
+  // Pesantren standard thresholds
+  if (points < 20) {
+    return { statusName: 'AMAN', badgeColor: 'emerald', description: 'Kedisiplinan dan capaian hafalan santri dalam kondisi baik.' };
+  } else if (points < 50) {
+    return { statusName: 'PERLU PEMBINAAN', badgeColor: 'amber', description: 'Perlu bimbingan dan pemantauan berkala oleh Muhafizh.' };
+  } else if (points < 75) {
+    return { statusName: 'PEMBINAAN KHUSUS', badgeColor: 'orange', description: 'Pemanggilan oleh Koordinator dan jadwal pembinaan khusus.' };
+  } else if (points < 100) {
+    return { statusName: 'PERINGATAN RESMI', badgeColor: 'rose', description: 'Penerbitan Surat Peringatan (SP) dan pemanggilan orang tua/wali.' };
+  } else {
+    return { statusName: 'TINDAKAN LANJUT', badgeColor: 'red', description: 'Sidang Dewan Asatidz dan evaluasi kelanjutan santri.' };
+  }
 }
 
 export const api = {
@@ -215,6 +251,7 @@ export const api = {
           tahfizh_violation_count: studentRecs.filter((r) => r.division === 'tahfizh').length,
           kesantrian_violation_count: studentRecs.filter((r) => r.division === 'kesantrian').length,
           positive_count: studentPosRecs.length,
+          status_info: getStatusForPoints(netTotal),
         };
       });
     },
@@ -898,6 +935,14 @@ export const api = {
         if (res && res.student && deletedIds.has(res.student.id)) {
           throw new Error(`Santri dengan NIS "${nis}" telah dinonaktifkan atau dihapus.`);
         }
+
+        // Guarantee status_info is always present and properly calculated
+        if (res && res.student) {
+          const net = Number(res.student.total_points || 0);
+          if (!res.student.status_info || !res.student.status_info.badgeColor) {
+            res.student.status_info = getStatusForPoints(net, res.thresholds);
+          }
+        }
         return res;
       } catch (err: any) {
         // Fallback to client-side synchronized store if server returns 404/error (e.g. newly created student on Vercel)
@@ -916,8 +961,15 @@ export const api = {
         const studentRecs = allRecs.filter((r) => r.student_id === found.id);
         const studentPosRecs = allPosRecs.filter((pr) => pr.student_id === found.id);
 
+        const net = Number(found.total_points || 0);
+        const statusInfo = found.status_info || getStatusForPoints(net, settingsData.thresholds);
+
         return {
-          student: found,
+          student: {
+            ...found,
+            total_points: net,
+            status_info: statusInfo,
+          },
           records: studentRecs,
           positive_records: studentPosRecs,
           thresholds: settingsData.thresholds || [],

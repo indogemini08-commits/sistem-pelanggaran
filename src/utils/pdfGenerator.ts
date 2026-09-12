@@ -265,10 +265,17 @@ export function generateStudentDetailPDF(
   doc.text(`:  ${student.teacher_name || '-'}`, 136, currentY + 12);
   doc.text(`:  ${student.academic_year || '2025/2026'}`, 136, currentY + 18);
 
-  const statusName = student.status_info?.statusName || 'AMAN';
+  const netPoints = Number(student.total_points || 0);
+  const statusName = student.status_info?.statusName || (netPoints < 20 ? 'AMAN' : 'PERLU PEMBINAAN');
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(15, 36, 63);
-  doc.text(`:  ${statusName} (${student.total_points} POIN)`, 136, currentY + 24);
+  if (statusName === 'AMAN') {
+    doc.setTextColor(16, 120, 80); // Dark Emerald Green
+  } else if (netPoints < 50) {
+    doc.setTextColor(180, 83, 9); // Amber
+  } else {
+    doc.setTextColor(190, 24, 93); // Rose/Red
+  }
+  doc.text(`:  ${statusName} (${netPoints} POIN)`, 136, currentY + 24);
 
   currentY += 34;
 
