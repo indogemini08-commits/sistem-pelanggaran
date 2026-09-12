@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query, get, run, logAudit } from '../db/database';
+import { query, get, run, logAudit, persistDb } from '../db/database';
 
 const router = Router();
 
@@ -43,6 +43,7 @@ router.post('/', (req: Request, res: Response) => {
       newData: { name, teacherId, schedule, location },
     });
 
+    persistDb();
     return res.status(201).json({ message: 'Halaqah berhasil dibuat', halaqahId });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -81,6 +82,7 @@ router.put('/:id', (req: Request, res: Response) => {
       newData: { name: updatedName, teacher_id: updatedTeacherId, schedule: updatedSchedule, location: updatedLocation },
     });
 
+    persistDb();
     return res.json({ message: 'Data halaqah berhasil diperbarui' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -98,8 +100,11 @@ router.delete('/:id', (req: Request, res: Response) => {
       return res.json({ message: 'Halaqah sudah tidak ada atau telah dihapus' });
     }
 
-    // Detach students from this halaqah
+    // Detach references safely
     run('UPDATE students SET halaqah_id = NULL WHERE halaqah_id = ?', [id]);
+    run('UPDATE violation_records SET halaqah_id = NULL WHERE halaqah_id = ?', [id]);
+    run('UPDATE positive_records SET halaqah_id = NULL WHERE halaqah_id = ?', [id]);
+    run('DELETE FROM student_halaqah_history WHERE halaqah_id = ?', [id]);
     run('DELETE FROM halaqah WHERE id = ?', [id]);
 
     logAudit({
@@ -110,6 +115,7 @@ router.delete('/:id', (req: Request, res: Response) => {
       oldData: halaqah,
     });
 
+    persistDb();
     return res.json({ message: 'Halaqah berhasil dihapus' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });

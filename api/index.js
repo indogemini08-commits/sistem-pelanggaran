@@ -1116,6 +1116,7 @@ router3.post("/", (req, res) => {
       recordId: teacherId,
       newData: { name, phone, userId, status }
     });
+    persistDb();
     return res.status(201).json({ message: "Data Muhafizh berhasil ditambahkan", teacherId });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -1148,6 +1149,7 @@ router3.put("/:id", (req, res) => {
       oldData: oldTeacher,
       newData: { name: updatedName, phone: updatedPhone, status: updatedStatus }
     });
+    persistDb();
     return res.json({ message: "Data Muhafizh berhasil diperbarui" });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -1162,6 +1164,9 @@ router3.delete("/:id", (req, res) => {
       return res.json({ message: "Muhafizh sudah tidak ada atau telah dihapus" });
     }
     run("UPDATE halaqah SET teacher_id = NULL WHERE teacher_id = ?", [id]);
+    run("UPDATE student_halaqah_history SET teacher_id = NULL WHERE teacher_id = ?", [id]);
+    run("UPDATE violation_records SET teacher_id = NULL WHERE teacher_id = ?", [id]);
+    run("UPDATE positive_records SET teacher_id = NULL WHERE teacher_id = ?", [id]);
     run("DELETE FROM teachers WHERE id = ?", [id]);
     logAudit({
       userName: actorName,
@@ -1170,6 +1175,7 @@ router3.delete("/:id", (req, res) => {
       recordId: id,
       oldData: teacher
     });
+    persistDb();
     return res.json({ message: "Muhafizh berhasil dihapus" });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -1214,6 +1220,7 @@ router4.post("/", (req, res) => {
       recordId: halaqahId,
       newData: { name, teacherId, schedule, location }
     });
+    persistDb();
     return res.status(201).json({ message: "Halaqah berhasil dibuat", halaqahId });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -1245,6 +1252,7 @@ router4.put("/:id", (req, res) => {
       oldData: oldHalaqah,
       newData: { name: updatedName, teacher_id: updatedTeacherId, schedule: updatedSchedule, location: updatedLocation }
     });
+    persistDb();
     return res.json({ message: "Data halaqah berhasil diperbarui" });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -1259,6 +1267,9 @@ router4.delete("/:id", (req, res) => {
       return res.json({ message: "Halaqah sudah tidak ada atau telah dihapus" });
     }
     run("UPDATE students SET halaqah_id = NULL WHERE halaqah_id = ?", [id]);
+    run("UPDATE violation_records SET halaqah_id = NULL WHERE halaqah_id = ?", [id]);
+    run("UPDATE positive_records SET halaqah_id = NULL WHERE halaqah_id = ?", [id]);
+    run("DELETE FROM student_halaqah_history WHERE halaqah_id = ?", [id]);
     run("DELETE FROM halaqah WHERE id = ?", [id]);
     logAudit({
       userName: actorName,
@@ -1267,6 +1278,7 @@ router4.delete("/:id", (req, res) => {
       recordId: id,
       oldData: halaqah
     });
+    persistDb();
     return res.json({ message: "Halaqah berhasil dihapus" });
   } catch (err) {
     return res.status(500).json({ error: err.message });

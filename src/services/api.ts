@@ -245,46 +245,193 @@ export const api = {
     },
   },
 
-  // Teachers
+  // Teachers (Synchronized with backend & client persistent storage)
   teachers: {
-    list: () => fetchJson<Teacher[]>(`${API_BASE}/teachers`),
-    create: (data: any) =>
-      fetchJson<{ message: string; teacherId: string }>(`${API_BASE}/teachers`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-    update: (id: string, data: any) =>
-      fetchJson<{ message: string }>(`${API_BASE}/teachers/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      }),
-    delete: (id: string, actorName?: string) =>
-      fetchJson<{ message: string }>(`${API_BASE}/teachers/${id}`, {
+    list: async (): Promise<Teacher[]> => {
+      let serverList: Teacher[] = [];
+      try {
+        serverList = await fetchJson<Teacher[]>(`${API_BASE}/teachers`);
+      } catch (e) {
+        console.warn('Failed to fetch teachers from server, using local store:', e);
+      }
+
+      const deletedIds = storageSync.getDeletedTeacherIds();
+      const createdTeachers = storageSync.getCreatedTeachers();
+      const updatedTeachers = storageSync.getUpdatedTeachers();
+
+      const existingIds = new Set(serverList.map((t) => t.id));
+      const combined = [...serverList];
+
+      for (const t of createdTeachers) {
+        if (!existingIds.has(t.id)) {
+          combined.unshift(t);
+          existingIds.add(t.id);
+        }
+      }
+
+      // Filter deleted teachers and apply local updates
+      return combined
+        .filter((t) => !deletedIds.has(t.id))
+        .map((t) => {
+          if (updatedTeachers[t.id]) {
+            return { ...t, ...updatedTeachers[t.id] };
+          }
+          return t;
+        });
+    },
+
+    create: async (data: any) => {
+      let res: any = null;
+      try {
+        res = await fetchJson<{ message: string; teacherId: string }>(`${API_BASE}/teachers`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
+      } catch (e) {
+        console.warn('Server create teacher failed, saving locally:', e);
+      }
+
+      const newId = res?.teacherId || 'tch_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
+      const newTeacher: Teacher = {
+        id: newId,
+        name: data.name.trim(),
+        phone: data.phone || '',
+        status: data.status || 'active',
+        user_id: data.userId || null,
+        created_at: new Date().toISOString(),
+      };
+
+      storageSync.saveCreatedTeacher(newTeacher);
+      return { message: 'Data Muhafizh berhasil ditambahkan', teacherId: newId };
+    },
+
+    update: async (id: string, data: any) => {
+      const updates: Partial<Teacher> = {
+        name: data.name?.trim(),
+        phone: data.phone,
+        status: data.status,
+      };
+      storageSync.saveUpdatedTeacher(id, updates);
+
+      try {
+        return await fetchJson<{ message: string }>(`${API_BASE}/teachers/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(data),
+        });
+      } catch (e) {
+        return { message: 'Data Muhafizh berhasil diperbarui' };
+      }
+    },
+
+    delete: async (id: string, actorName?: string) => {
+      storageSync.addDeletedTeacherId(id);
+      return await fetchJson<{ message: string }>(`${API_BASE}/teachers/${id}`, {
         method: 'DELETE',
         body: JSON.stringify({ actorName }),
-      }),
+      }).catch(() => ({ message: 'Muhafizh berhasil dihapus' }));
+    },
   },
 
-  // Halaqah
+  // Halaqah (Synchronized with backend & client persistent storage)
   halaqah: {
-    list: () => fetchJson<Halaqah[]>(`${API_BASE}/halaqah`),
-    create: (data: any) =>
-      fetchJson<{ message: string; halaqahId: string }>(`${API_BASE}/halaqah`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-    update: (id: string, data: any) =>
-      fetchJson<{ message: string }>(`${API_BASE}/halaqah/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      }),
-    delete: (id: string, actorName?: string) =>
-      fetchJson<{ message: string }>(`${API_BASE}/halaqah/${id}`, {
+    list: async (): Promise<Halaqah[]> => {
+      let serverList: Halaqah[] = [];
+      try {
+        serverList = await fetchJson<Halaqah[]>(`${API_BASE}/halaqah`);
+      } catch (e) {
+        console.warn('Failed to fetch halaqahs from server, using local store:', e);
+      }
+
+      const deletedIds = storageSync.getDeletedHalaqahIds();
+      const createdHalaqahs = storageSync.getCreatedHalaqahs();
+      const updatedHalaqahs = storageSync.getUpdatedHalaqahs();
+
+      const existingIds = new Set(serverList.map((h) => h.id));
+      const combined = [...serverList];
+
+      for (const h of createdHalaqahs) {
+        if (!existingIds.has(h.id)) {
+          combined.unshift(h);
+          existingIds.add(h.id);
+        }
+      }
+
+      // Filter deleted halaqahs and apply local updates
+      return combined
+        .filter((h) => !deletedIds.has(h.id))
+        .map((h) => {
+          if (updatedHalaqahs[h.id]) {
+            return { ...h, ...updatedHalaqahs[h.id] };
+          }
+          return h;
+        });
+    },
+
+    create: async (data: any) => {
+      let res: any = null;
+      try {
+        res = await fetchJson<{ message: string; halaqahId: string }>(`${API_BASE}/halaqah`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
+      } catch (e) {
+        console.warn('Server create halaqah failed, saving locally:', e);
+      }
+
+      const newId = res?.halaqahId || 'hlq_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
+      const newHalaqah: Halaqah = {
+        id: newId,
+        name: data.name.trim(),
+        teacher_id: data.teacherId || null,
+        schedule: data.schedule || "Ba'da Subuh & Ba'da Maghrib",
+        location: data.location || 'Masjid Utama',
+        academic_year: data.academicYear || '2025/2026',
+        status: data.status || 'active',
+        student_count: 0,
+        created_at: new Date().toISOString(),
+      };
+
+      storageSync.saveCreatedHalaqah(newHalaqah);
+      return { message: 'Halaqah berhasil dibuat', halaqahId: newId };
+    },
+
+    update: async (id: string, data: any) => {
+      const updates: Partial<Halaqah> = {
+        name: data.name?.trim(),
+        teacher_id: data.teacherId,
+        schedule: data.schedule,
+        location: data.location,
+        academic_year: data.academicYear,
+        status: data.status,
+      };
+      storageSync.saveUpdatedHalaqah(id, updates);
+
+      try {
+        return await fetchJson<{ message: string }>(`${API_BASE}/halaqah/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(data),
+        });
+      } catch (e) {
+        return { message: 'Data halaqah berhasil diperbarui' };
+      }
+    },
+
+    delete: async (id: string, actorName?: string) => {
+      storageSync.addDeletedHalaqahId(id);
+      return await fetchJson<{ message: string }>(`${API_BASE}/halaqah/${id}`, {
         method: 'DELETE',
         body: JSON.stringify({ actorName }),
-      }),
+      }).catch(() => ({ message: 'Halaqah berhasil dihapus' }));
+    },
+
     getStudents: async (id: string): Promise<Student[]> => {
-      const list = await fetchJson<Student[]>(`${API_BASE}/halaqah/${id}/students`);
+      let list: Student[] = [];
+      try {
+        list = await fetchJson<Student[]>(`${API_BASE}/halaqah/${id}/students`);
+      } catch (e) {
+        const allStudents = await api.students.list();
+        list = allStudents.filter((s) => s.halaqah_id === id);
+      }
       const deletedIds = storageSync.getDeletedStudentIds();
       return list.filter((s) => !deletedIds.has(s.id));
     },

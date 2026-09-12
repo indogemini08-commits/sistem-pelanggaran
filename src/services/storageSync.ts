@@ -1,7 +1,7 @@
 // Client-Side Persistent Storage & Synchronization Manager
 // Solves Vercel Serverless ephemeral statelessness so deleted/created data persists across page reloads.
 
-import { Student, ViolationRecord, PositiveRecord, User } from '../types';
+import { Student, ViolationRecord, PositiveRecord, User, Halaqah, Teacher } from '../types';
 
 const KEYS = {
   DELETED_STUDENTS: 'imbs_deleted_student_ids',
@@ -22,6 +22,14 @@ const KEYS = {
   DELETED_USERS: 'imbs_deleted_user_ids',
   CREATED_USERS: 'imbs_created_users',
   UPDATED_USERS: 'imbs_updated_users',
+
+  DELETED_HALAQAHS: 'imbs_deleted_halaqah_ids',
+  CREATED_HALAQAHS: 'imbs_created_halaqahs',
+  UPDATED_HALAQAHS: 'imbs_updated_halaqahs',
+
+  DELETED_TEACHERS: 'imbs_deleted_teacher_ids',
+  CREATED_TEACHERS: 'imbs_created_teachers',
+  UPDATED_TEACHERS: 'imbs_updated_teachers',
 };
 
 
@@ -270,6 +278,112 @@ export const storageSync = {
     safeSetItem(KEYS.CREATED_USERS, created);
 
     this.notifyDataChange({ action: 'update', resource: 'user', id });
+  },
+
+  // === HALAQAHS ===
+  getDeletedHalaqahIds(): Set<string> {
+    const arr = safeGetItem<string[]>(KEYS.DELETED_HALAQAHS, []);
+    return new Set(arr);
+  },
+
+  addDeletedHalaqahId(id: string) {
+    const set = this.getDeletedHalaqahIds();
+    set.add(id);
+    safeSetItem(KEYS.DELETED_HALAQAHS, Array.from(set));
+
+    const created = this.getCreatedHalaqahs().filter((h) => h.id !== id);
+    safeSetItem(KEYS.CREATED_HALAQAHS, created);
+
+    const updated = this.getUpdatedHalaqahs();
+    delete updated[id];
+    safeSetItem(KEYS.UPDATED_HALAQAHS, updated);
+
+    this.notifyDataChange({ action: 'delete', resource: 'halaqah', id });
+  },
+
+  getCreatedHalaqahs(): Halaqah[] {
+    return safeGetItem<Halaqah[]>(KEYS.CREATED_HALAQAHS, []);
+  },
+
+  saveCreatedHalaqah(halaqah: Halaqah) {
+    const list = this.getCreatedHalaqahs().filter((h) => h.id !== halaqah.id);
+    list.unshift(halaqah);
+    safeSetItem(KEYS.CREATED_HALAQAHS, list);
+
+    const delSet = this.getDeletedHalaqahIds();
+    if (delSet.has(halaqah.id)) {
+      delSet.delete(halaqah.id);
+      safeSetItem(KEYS.DELETED_HALAQAHS, Array.from(delSet));
+    }
+    this.notifyDataChange({ action: 'create', resource: 'halaqah', id: halaqah.id });
+  },
+
+  getUpdatedHalaqahs(): Record<string, Partial<Halaqah>> {
+    return safeGetItem<Record<string, Partial<Halaqah>>>(KEYS.UPDATED_HALAQAHS, {});
+  },
+
+  saveUpdatedHalaqah(id: string, updates: Partial<Halaqah>) {
+    const map = this.getUpdatedHalaqahs();
+    map[id] = { ...(map[id] || {}), ...updates };
+    safeSetItem(KEYS.UPDATED_HALAQAHS, map);
+
+    const created = this.getCreatedHalaqahs().map((h) => (h.id === id ? { ...h, ...updates } : h));
+    safeSetItem(KEYS.CREATED_HALAQAHS, created);
+
+    this.notifyDataChange({ action: 'update', resource: 'halaqah', id });
+  },
+
+  // === TEACHERS ===
+  getDeletedTeacherIds(): Set<string> {
+    const arr = safeGetItem<string[]>(KEYS.DELETED_TEACHERS, []);
+    return new Set(arr);
+  },
+
+  addDeletedTeacherId(id: string) {
+    const set = this.getDeletedTeacherIds();
+    set.add(id);
+    safeSetItem(KEYS.DELETED_TEACHERS, Array.from(set));
+
+    const created = this.getCreatedTeachers().filter((t) => t.id !== id);
+    safeSetItem(KEYS.CREATED_TEACHERS, created);
+
+    const updated = this.getUpdatedTeachers();
+    delete updated[id];
+    safeSetItem(KEYS.UPDATED_TEACHERS, updated);
+
+    this.notifyDataChange({ action: 'delete', resource: 'teacher', id });
+  },
+
+  getCreatedTeachers(): Teacher[] {
+    return safeGetItem<Teacher[]>(KEYS.CREATED_TEACHERS, []);
+  },
+
+  saveCreatedTeacher(teacher: Teacher) {
+    const list = this.getCreatedTeachers().filter((t) => t.id !== teacher.id);
+    list.unshift(teacher);
+    safeSetItem(KEYS.CREATED_TEACHERS, list);
+
+    const delSet = this.getDeletedTeacherIds();
+    if (delSet.has(teacher.id)) {
+      delSet.delete(teacher.id);
+      safeSetItem(KEYS.DELETED_TEACHERS, Array.from(delSet));
+    }
+    this.notifyDataChange({ action: 'create', resource: 'teacher', id: teacher.id });
+  },
+
+  getUpdatedTeachers(): Record<string, Partial<Teacher>> {
+    return safeGetItem<Record<string, Partial<Teacher>>>(KEYS.UPDATED_TEACHERS, {});
+  },
+
+  saveUpdatedTeacher(id: string, updates: Partial<Teacher>) {
+    const map = this.getUpdatedTeachers();
+    map[id] = { ...(map[id] || {}), ...updates };
+    safeSetItem(KEYS.UPDATED_TEACHERS, map);
+
+    const created = this.getCreatedTeachers().map((t) => (t.id === id ? { ...t, ...updates } : t));
+    safeSetItem(KEYS.CREATED_TEACHERS, created);
+
+    this.notifyDataChange({ action: 'update', resource: 'teacher', id });
   },
 
   // === RESET TO FACTORY DEMO ===

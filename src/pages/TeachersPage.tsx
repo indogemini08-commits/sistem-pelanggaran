@@ -36,6 +36,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ currentUser }) => {
   const [teacherToDelete, setTeacherToDelete] = useState<Teacher | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [deleteError, setDeleteError] = useState<string>('');
+  const [successMsg, setSuccessMsg] = useState<string>('');
 
   // Form State
   const [formName, setFormName] = useState<string>('');
@@ -95,6 +96,8 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ currentUser }) => {
         actorName: currentUser?.name || 'Admin',
       });
       setIsAddModalOpen(false);
+      setSuccessMsg(`Data Muhafizh "${formName}" berhasil ditambahkan.`);
+      setTimeout(() => setSuccessMsg(''), 4000);
       await loadTeachers();
     } catch (err: any) {
       setFormError(err.message || 'Gagal menambahkan muhafizh');
@@ -122,6 +125,8 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ currentUser }) => {
         actorName: currentUser?.name || 'Admin',
       });
       setIsEditModalOpen(false);
+      setSuccessMsg(`Data Muhafizh "${formName}" berhasil diperbarui.`);
+      setTimeout(() => setSuccessMsg(''), 4000);
       await loadTeachers();
     } catch (err: any) {
       setFormError(err.message || 'Gagal memperbarui muhafizh');
@@ -132,11 +137,15 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ currentUser }) => {
 
   const handleDeleteConfirm = async () => {
     if (!teacherToDelete) return;
+    const target = teacherToDelete;
     setIsDeleting(true);
     setDeleteError('');
     try {
-      await api.teachers.delete(teacherToDelete.id, currentUser?.name || 'Admin');
+      await api.teachers.delete(target.id, currentUser?.name || 'Admin');
+      setTeachers((prev) => prev.filter((t) => t.id !== target.id));
       setTeacherToDelete(null);
+      setSuccessMsg(`Data Muhafizh "${target.name}" berhasil dihapus.`);
+      setTimeout(() => setSuccessMsg(''), 4000);
       await loadTeachers();
     } catch (err: any) {
       setDeleteError(err.message || 'Gagal menghapus muhafizh');
@@ -167,6 +176,23 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ currentUser }) => {
           <span>Tambah Muhafizh</span>
         </button>
       </div>
+
+      {/* Success Notification Banner */}
+      {successMsg && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm rounded-2xl flex items-center justify-between shadow-sm animate-scale-in">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span className="font-semibold">{successMsg}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSuccessMsg('')}
+            className="text-emerald-500 hover:text-emerald-700 p-1 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Grid of Teachers */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">

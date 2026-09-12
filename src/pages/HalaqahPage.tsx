@@ -40,6 +40,7 @@ export const HalaqahPage: React.FC<HalaqahPageProps> = ({
   const [halaqahToDelete, setHalaqahToDelete] = useState<Halaqah | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [deleteError, setDeleteError] = useState<string>('');
+  const [successMsg, setSuccessMsg] = useState<string>('');
 
   // View students in halaqah modal
   const [viewStudentsHalaqah, setViewStudentsHalaqah] = useState<Halaqah | null>(null);
@@ -113,6 +114,8 @@ export const HalaqahPage: React.FC<HalaqahPageProps> = ({
         actorName: currentUser?.name || 'Admin',
       });
       setIsAddModalOpen(false);
+      setSuccessMsg(`Halaqah "${formName}" berhasil dibuat.`);
+      setTimeout(() => setSuccessMsg(''), 4000);
       await loadData();
     } catch (err: any) {
       setFormError(err.message || 'Gagal membuat halaqah');
@@ -142,6 +145,8 @@ export const HalaqahPage: React.FC<HalaqahPageProps> = ({
         actorName: currentUser?.name || 'Admin',
       });
       setIsEditModalOpen(false);
+      setSuccessMsg(`Halaqah "${formName}" berhasil diperbarui.`);
+      setTimeout(() => setSuccessMsg(''), 4000);
       await loadData();
     } catch (err: any) {
       setFormError(err.message || 'Gagal mengubah halaqah');
@@ -152,11 +157,15 @@ export const HalaqahPage: React.FC<HalaqahPageProps> = ({
 
   const handleDeleteConfirm = async () => {
     if (!halaqahToDelete) return;
+    const target = halaqahToDelete;
     setIsDeleting(true);
     setDeleteError('');
     try {
-      await api.halaqah.delete(halaqahToDelete.id, currentUser?.name || 'Admin');
+      await api.halaqah.delete(target.id, currentUser?.name || 'Admin');
+      setHalaqahs((prev) => prev.filter((h) => h.id !== target.id));
       setHalaqahToDelete(null);
+      setSuccessMsg(`Halaqah "${target.name}" berhasil dihapus.`);
+      setTimeout(() => setSuccessMsg(''), 4000);
       await loadData();
     } catch (err: any) {
       setDeleteError(err.message || 'Gagal menghapus halaqah');
@@ -200,6 +209,23 @@ export const HalaqahPage: React.FC<HalaqahPageProps> = ({
           <span>Tambah Halaqah Baru</span>
         </button>
       </div>
+
+      {/* Success Notification Banner */}
+      {successMsg && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm rounded-2xl flex items-center justify-between shadow-sm animate-scale-in">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span className="font-semibold">{successMsg}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSuccessMsg('')}
+            className="text-emerald-500 hover:text-emerald-700 p-1 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Halaqah Grid Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">

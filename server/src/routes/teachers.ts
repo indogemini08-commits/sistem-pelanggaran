@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query, get, run, logAudit } from '../db/database';
+import { query, get, run, logAudit, persistDb } from '../db/database';
 
 const router = Router();
 
@@ -54,6 +54,7 @@ router.post('/', (req: Request, res: Response) => {
       newData: { name, phone, userId, status },
     });
 
+    persistDb();
     return res.status(201).json({ message: 'Data Muhafizh berhasil ditambahkan', teacherId });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -95,6 +96,7 @@ router.put('/:id', (req: Request, res: Response) => {
       newData: { name: updatedName, phone: updatedPhone, status: updatedStatus },
     });
 
+    persistDb();
     return res.json({ message: 'Data Muhafizh berhasil diperbarui' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -112,8 +114,11 @@ router.delete('/:id', (req: Request, res: Response) => {
       return res.json({ message: 'Muhafizh sudah tidak ada atau telah dihapus' });
     }
 
-    // Detach teacher from halaqah
+    // Detach references safely
     run('UPDATE halaqah SET teacher_id = NULL WHERE teacher_id = ?', [id]);
+    run('UPDATE student_halaqah_history SET teacher_id = NULL WHERE teacher_id = ?', [id]);
+    run('UPDATE violation_records SET teacher_id = NULL WHERE teacher_id = ?', [id]);
+    run('UPDATE positive_records SET teacher_id = NULL WHERE teacher_id = ?', [id]);
     run('DELETE FROM teachers WHERE id = ?', [id]);
 
     logAudit({
@@ -124,6 +129,7 @@ router.delete('/:id', (req: Request, res: Response) => {
       oldData: teacher,
     });
 
+    persistDb();
     return res.json({ message: 'Muhafizh berhasil dihapus' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
