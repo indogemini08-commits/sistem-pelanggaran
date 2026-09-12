@@ -279,7 +279,7 @@ router.get('/:id', (req: Request, res: Response) => {
 });
 
 // POST create student
-router.post('/', (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   try {
     const {
       studentNumber,
@@ -327,6 +327,7 @@ router.post('/', (req: Request, res: Response) => {
       newData: { studentNumber: cleanNIS, name, class: studentClass, gender, halaqahId },
     });
 
+    await persistDb();
     return res.status(201).json({ message: 'Santri berhasil ditambahkan', studentId });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -334,7 +335,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // PUT update student
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const {
@@ -391,6 +392,7 @@ router.put('/:id', (req: Request, res: Response) => {
       newData: { studentNumber: cleanNIS, name: updatedName, class: updatedClass, halaqahId: updatedHalaqahId },
     });
 
+    await persistDb();
     return res.json({ message: 'Data santri berhasil diperbarui' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -398,7 +400,7 @@ router.put('/:id', (req: Request, res: Response) => {
 });
 
 // DELETE student
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { actorName = 'Admin' } = req.body || {};
@@ -418,8 +420,8 @@ router.delete('/:id', (req: Request, res: Response) => {
     run('DELETE FROM students WHERE id = ?', [targetId]);
     addTombstone(targetId, 'student');
 
-    // Ensure database changes are flushed immediately to disk
-    persistDb();
+    // Ensure database changes are flushed immediately to disk and Neon cloud
+    await persistDb();
 
     logAudit({
       userName: actorName,
@@ -438,7 +440,7 @@ router.delete('/:id', (req: Request, res: Response) => {
 });
 
 // POST bulk delete students (Admin only)
-router.post('/bulk-delete', (req: Request, res: Response) => {
+router.post('/bulk-delete', async (req: Request, res: Response) => {
   try {
     const { ids, actorName = 'Admin' } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -469,7 +471,7 @@ router.post('/bulk-delete', (req: Request, res: Response) => {
       deleted.push(student.id);
     }
 
-    persistDb();
+    await persistDb();
     console.log(`[BULK_DELETE] ${deleted.length} santri dihapus permanen oleh ${actorName}`);
     return res.json({
       success: true,
@@ -485,7 +487,7 @@ router.post('/bulk-delete', (req: Request, res: Response) => {
 });
 
 // POST import students from Excel / JSON rows (REALLY SAVES TO DATABASE!)
-router.post('/import', (req: Request, res: Response) => {
+router.post('/import', async (req: Request, res: Response) => {
   try {
     const { rows, actorName = 'Admin' } = req.body;
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -581,6 +583,8 @@ router.post('/import', (req: Request, res: Response) => {
       tableName: 'students',
       newData: { insertedCount, errorsCount: errors.length },
     });
+
+    await persistDb();
 
     return res.json({
       message: `Berhasil mengimpor ${insertedCount} santri ke database.`,

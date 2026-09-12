@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query, get, run, logAudit } from '../db/database';
+import { query, get, run, logAudit, persistDb } from '../db/database';
 
 const router = Router();
 
@@ -33,7 +33,7 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // PUT update school settings (APP NAME, LOGO, SCHOOL NAME, ADDRESS, KOP SURAT)
-router.put('/school', (req: Request, res: Response) => {
+router.put('/school', async (req: Request, res: Response) => {
   try {
     const {
       appName,
@@ -74,6 +74,7 @@ router.put('/school', (req: Request, res: Response) => {
       newData: { appName: updatedAppName, schoolName: updatedSchoolName, address: updatedAddress, logoUrl: updatedLogo },
     });
 
+    await persistDb();
     return res.json({ message: 'Pengaturan identitas sekolah & aplikasi berhasil disimpan' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -81,7 +82,7 @@ router.put('/school', (req: Request, res: Response) => {
 });
 
 // PUT update point thresholds (BATAS POIN)
-router.put('/thresholds', (req: Request, res: Response) => {
+router.put('/thresholds', async (req: Request, res: Response) => {
   try {
     const { thresholds, actorName = 'Admin' } = req.body;
     if (!Array.isArray(thresholds)) {
@@ -119,6 +120,7 @@ router.put('/thresholds', (req: Request, res: Response) => {
       newData: thresholds,
     });
 
+    await persistDb();
     return res.json({ message: 'Batas status poin berhasil diperbarui' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });

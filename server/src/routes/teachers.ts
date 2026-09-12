@@ -32,7 +32,7 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // POST add teacher
-router.post('/', (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   try {
     const { name, phone, userId, status = 'active', actorName = 'Admin' } = req.body;
     if (!name) {
@@ -54,7 +54,7 @@ router.post('/', (req: Request, res: Response) => {
       newData: { name, phone, userId, status },
     });
 
-    persistDb();
+    await persistDb();
     return res.status(201).json({ message: 'Data Muhafizh berhasil ditambahkan', teacherId });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -62,7 +62,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // PUT edit teacher
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { name, phone, userId, status, actorName = 'Admin' } = req.body;
@@ -96,7 +96,7 @@ router.put('/:id', (req: Request, res: Response) => {
       newData: { name: updatedName, phone: updatedPhone, status: updatedStatus },
     });
 
-    persistDb();
+    await persistDb();
     return res.json({ message: 'Data Muhafizh berhasil diperbarui' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -104,7 +104,7 @@ router.put('/:id', (req: Request, res: Response) => {
 });
 
 // DELETE teacher
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { actorName = 'Admin' } = req.body || {};
@@ -130,7 +130,7 @@ router.delete('/:id', (req: Request, res: Response) => {
       oldData: teacher,
     });
 
-    persistDb();
+    await persistDb();
     return res.json({ message: 'Muhafizh berhasil dihapus' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });

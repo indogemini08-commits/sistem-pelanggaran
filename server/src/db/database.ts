@@ -276,6 +276,7 @@ export function importDatabaseState(snapshot: Partial<DatabaseSnapshot>): void {
       db.run("DELETE FROM teachers WHERE id IN (SELECT id FROM tombstones);");
       db.run("DELETE FROM violation_records WHERE id IN (SELECT id FROM tombstones);");
       db.run("DELETE FROM positive_records WHERE id IN (SELECT id FROM tombstones);");
+      db.run("DELETE FROM positive_actions WHERE id IN (SELECT id FROM tombstones);");
       db.run("DELETE FROM violations WHERE id IN (SELECT id FROM tombstones);");
       db.run("DELETE FROM users WHERE id IN (SELECT id FROM tombstones) AND id != 'usr_admin_imbs';");
     }
@@ -292,7 +293,7 @@ export function importDatabaseState(snapshot: Partial<DatabaseSnapshot>): void {
   persistDb(false);
 }
 
-export function persistDb(syncToCloud = true) {
+export async function persistDb(syncToCloud = true): Promise<void> {
   if (!db) return;
   try {
     const data = db.export();
@@ -304,14 +305,11 @@ export function persistDb(syncToCloud = true) {
 
   if (!syncToCloud) return;
 
-  // Asynchronously push snapshot to cloud storage if configured
   try {
     const state = exportDatabaseState();
-    saveCloudSnapshot(state).catch((e) => {
-      console.warn('[CloudStorage] Async save warning:', e?.message || e);
-    });
+    await saveCloudSnapshot(state);
   } catch (err) {
-    // Non-blocking
+    console.warn('[CloudStorage] Save warning:', err);
   }
 }
 
@@ -341,7 +339,7 @@ export function run(sql: string, params: any[] = []): void {
   } else {
     db.run(sql);
   }
-  persistDb();
+  persistDb(false);
 }
 
 export function logAudit(options: {

@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { getDb, importDatabaseState } from './db/database';
+import { getDb, importDatabaseState, persistDb } from './db/database';
 import { seedDatabase } from './db/seed';
 import { loadCloudSnapshot, checkAndSyncCloudSnapshot } from './db/cloudStorage';
 
@@ -34,15 +34,18 @@ export async function ensureDbInitialized(): Promise<void> {
       // Check if a cloud snapshot exists in Postgres, Vercel KV, or Blob
       try {
         const cloudSnapshot = await loadCloudSnapshot();
-        if (cloudSnapshot && Array.isArray(cloudSnapshot.students) && cloudSnapshot.students.length > 0) {
-          console.log(`Memuat ${cloudSnapshot.students.length} data santri dari Cloud Snapshot...`);
+        if (cloudSnapshot && (cloudSnapshot.version || cloudSnapshot.timestamp || Array.isArray(cloudSnapshot.users))) {
+          console.log('Memuat data dari Cloud Snapshot...');
           importDatabaseState(cloudSnapshot);
         } else {
+          console.log('Cloud snapshot belum ada, melakukan seeding awal...');
           seedDatabase();
+          await persistDb();
         }
       } catch (e: any) {
         console.warn('Gagal memeriksa cloud snapshot, menggunakan seeder lokal:', e?.message || e);
         seedDatabase();
+        await persistDb();
       }
 
       console.log('Engine database SQLite & cloud synchronization siap digunakan.');

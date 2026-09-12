@@ -56,8 +56,8 @@ router.get('/', (req: Request, res: Response) => {
   }
 });
 
-// POST create new positive record
-router.post('/', (req: Request, res: Response) => {
+// POST record positive action
+router.post('/', async (req: Request, res: Response) => {
   try {
     const {
       studentId,
@@ -179,6 +179,8 @@ router.post('/', (req: Request, res: Response) => {
       },
     });
 
+    await persistDb();
+
     return res.status(201).json({
       message: 'Kegiatan baik / pengurangan poin berhasil dicatat',
       recordId,
@@ -190,7 +192,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // PUT cancel (soft delete) positive record
-router.put('/:id/cancel', (req: Request, res: Response) => {
+router.put('/:id/cancel', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { reason, actorName = 'Admin' } = req.body;
@@ -214,7 +216,7 @@ router.put('/:id/cancel', (req: Request, res: Response) => {
        WHERE id = ?`,
       [actorName, reason.trim(), id]
     );
-    persistDb();
+    await persistDb();
 
     logAudit({
       userName: actorName,
@@ -232,7 +234,7 @@ router.put('/:id/cancel', (req: Request, res: Response) => {
 });
 
 // DELETE hard delete positive record (Admin only)
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { actorName = 'Admin' } = req.body || {};
@@ -244,7 +246,7 @@ router.delete('/:id', (req: Request, res: Response) => {
 
     run('DELETE FROM positive_records WHERE id = ?', [id]);
     addTombstone(id, 'positive_record');
-    persistDb();
+    await persistDb();
 
     logAudit({
       userName: actorName,
@@ -261,7 +263,7 @@ router.delete('/:id', (req: Request, res: Response) => {
 });
 
 // POST bulk delete positive records (Admin only)
-router.post('/bulk-delete', (req: Request, res: Response) => {
+router.post('/bulk-delete', async (req: Request, res: Response) => {
   try {
     const { ids, actorName = 'Admin' } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -288,7 +290,7 @@ router.post('/bulk-delete', (req: Request, res: Response) => {
       deleted.push(id);
     }
 
-    persistDb();
+    await persistDb();
     return res.json({
       success: true,
       deletedCount: deleted.length,

@@ -30,7 +30,7 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // POST create master violation
-router.post('/', (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   try {
     const { code, name, category, defaultPoints, description, division = 'tahfizh', status = 'active', actorName = 'Admin' } = req.body;
     if (!name || !category || defaultPoints === undefined || defaultPoints <= 0) {
@@ -68,7 +68,7 @@ router.post('/', (req: Request, res: Response) => {
       [violationId, cleanCode, name.trim(), cleanDivision, category, description || '', parseInt(defaultPoints, 10), status]
     );
 
-    persistDb();
+    await persistDb();
 
     logAudit({
       userName: actorName,
@@ -85,7 +85,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // PUT update master violation (EDIT POINTS, NAME, CATEGORY, STATUS, DIVISION)
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { code, name, category, defaultPoints, description, division, status, actorName = 'Admin' } = req.body;
@@ -116,7 +116,7 @@ router.put('/:id', (req: Request, res: Response) => {
        WHERE id = ?`,
       [cleanCode, updatedName, updatedDivision, updatedCategory, updatedPoints, updatedDesc, updatedStatus, id]
     );
-    persistDb();
+    await persistDb();
 
     logAudit({
       userName: actorName,
@@ -136,7 +136,7 @@ router.put('/:id', (req: Request, res: Response) => {
 });
 
 // POST bulk delete master violations (Admin only)
-router.post('/bulk-delete', (req: Request, res: Response) => {
+router.post('/bulk-delete', async (req: Request, res: Response) => {
   try {
     const { ids, actorName = 'Admin' } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -160,7 +160,7 @@ router.post('/bulk-delete', (req: Request, res: Response) => {
       });
       deleted.push(id);
     }
-    persistDb();
+    await persistDb();
 
     return res.json({
       success: true,
@@ -174,7 +174,7 @@ router.post('/bulk-delete', (req: Request, res: Response) => {
 });
 
 // DELETE master violation
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { actorName = 'Admin' } = req.body || {};
@@ -182,14 +182,14 @@ router.delete('/:id', (req: Request, res: Response) => {
     addTombstone(id, 'violation');
     const violation = get<any>('SELECT * FROM violations WHERE id = ?', [id]);
     if (!violation) {
-      persistDb();
+      await persistDb();
       return res.json({ message: 'Pelanggaran sudah tidak ada atau telah dihapus' });
     }
 
     // We do not hard delete if there are historical records, or we nullify FK because records have snapshots!
     run('UPDATE violation_records SET violation_id = NULL WHERE violation_id = ?', [id]);
     run('DELETE FROM violations WHERE id = ?', [id]);
-    persistDb();
+    await persistDb();
 
     logAudit({
       userName: actorName,

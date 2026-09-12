@@ -122,21 +122,20 @@ export async function checkAndSyncCloudSnapshot(importCallback: (data: any) => v
   if (providerInfo.provider !== 'postgres') return;
 
   const now = Date.now();
-  if (now - lastCheckTime < 1500) return;
+  if (now - lastCheckTime < 1000) return;
   lastCheckTime = now;
 
   try {
     const dbUrl = (process.env.POSTGRES_URL || process.env.DATABASE_URL)!;
     const sql = neon(dbUrl);
-    const rows = await sql`SELECT updated_at FROM imbs_snapshots WHERE id = 'master_snapshot' LIMIT 1;`;
+    const rows = await sql`SELECT data, updated_at FROM imbs_snapshots WHERE id = 'master_snapshot' LIMIT 1;`;
     if (rows && rows.length > 0 && rows[0].updated_at) {
       const remoteTime = new Date(rows[0].updated_at).toISOString();
       if (localSnapshotTimestamp && remoteTime !== localSnapshotTimestamp) {
         console.log(`[CloudStorage] Remote snapshot is newer (${remoteTime} vs ${localSnapshotTimestamp}), syncing container...`);
-        const fullRows = await sql`SELECT data, updated_at FROM imbs_snapshots WHERE id = 'master_snapshot' LIMIT 1;`;
-        if (fullRows && fullRows.length > 0 && fullRows[0].data) {
-          importCallback(fullRows[0].data);
-          localSnapshotTimestamp = new Date(fullRows[0].updated_at).toISOString();
+        if (rows[0].data && (rows[0].data.version || rows[0].data.timestamp || Array.isArray(rows[0].data.users))) {
+          importCallback(rows[0].data);
+          localSnapshotTimestamp = remoteTime;
         }
       } else if (!localSnapshotTimestamp) {
         localSnapshotTimestamp = remoteTime;
@@ -148,22 +147,12 @@ export async function checkAndSyncCloudSnapshot(importCallback: (data: any) => v
 }
 
 // Save database snapshot to configured cloud provider
-let isSaving = false;
-let pendingSave: any = null;
-
 export async function saveCloudSnapshot(snapshot: any): Promise<boolean> {
   const providerInfo = getActiveCloudProvider();
   if (!providerInfo.isConnected) {
     return false;
   }
 
-  // Debounce saving if already saving
-  if (isSaving) {
-    pendingSave = snapshot;
-    return true;
-  }
-
-  isSaving = true;
   try {
     // 1. Neon / PostgreSQL
     if (providerInfo.provider === 'postgres') {
@@ -215,13 +204,6 @@ export async function saveCloudSnapshot(snapshot: any): Promise<boolean> {
     }
   } catch (err: any) {
     console.error('[CloudStorage] Gagal menyimpan snapshot ke cloud provider:', err?.message || err);
-  } finally {
-    isSaving = false;
-    if (pendingSave) {
-      const next = pendingSave;
-      pendingSave = null;
-      setTimeout(() => saveCloudSnapshot(next), 100);
-    }
   }
 
   return false;

@@ -20,7 +20,7 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // POST create user
-router.post('/', (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   try {
     const { name, email, password, role, status = 'active', phone, actorName = 'Admin' } = req.body;
     if (!name || !email || !password || !role) {
@@ -50,8 +50,8 @@ router.post('/', (req: Request, res: Response) => {
       );
     }
 
-    // Persist immediately to disk
-    persistDb();
+    // Persist immediately to disk and cloud
+    await persistDb();
 
     logAudit({
       userName: actorName,
@@ -79,7 +79,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // PUT update user
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { name, email, password, role, status, phone, actorName = 'Admin' } = req.body;
@@ -116,8 +116,8 @@ router.put('/:id', (req: Request, res: Response) => {
       }
     }
 
-    // Persist immediately to disk
-    persistDb();
+    // Persist immediately to disk and cloud
+    await persistDb();
 
     logAudit({
       userName: actorName,
@@ -145,13 +145,15 @@ router.put('/:id', (req: Request, res: Response) => {
 });
 
 // DELETE user
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { actorName = 'Admin' } = req.body || {};
 
     const user = get<any>('SELECT * FROM users WHERE id = ?', [id]);
     if (!user) {
+      addTombstone(id, 'user');
+      await persistDb();
       return res.json({ message: 'Pengguna sudah tidak ada atau telah dihapus' });
     }
 
@@ -168,8 +170,8 @@ router.delete('/:id', (req: Request, res: Response) => {
     run('DELETE FROM users WHERE id = ?', [id]);
     addTombstone(id, 'user');
 
-    // Persist immediately to disk
-    persistDb();
+    // Persist immediately to disk and cloud
+    await persistDb();
 
     logAudit({
       userName: actorName,

@@ -38,6 +38,7 @@ router.post('/state', async (req: Request, res: Response) => {
     // 1. If a full snapshot is provided
     if (clientState && clientState.students) {
       importDatabaseState(clientState);
+      await persistDb();
       return res.json({
         success: true,
         message: 'State database berhasil diperbarui secara penuh',
@@ -104,6 +105,14 @@ router.post('/state', async (req: Request, res: Response) => {
           run('UPDATE violation_records SET violation_id = NULL WHERE violation_id = ?', [id]);
           run('DELETE FROM violations WHERE id = ?', [id]);
           addTombstone(id, 'violation');
+        }
+      }
+
+      if (Array.isArray(delta.deletedActionIds)) {
+        for (const id of delta.deletedActionIds) {
+          run('UPDATE positive_records SET action_id = NULL WHERE action_id = ?', [id]);
+          run('DELETE FROM positive_actions WHERE id = ?', [id]);
+          addTombstone(id, 'positive_action');
         }
       }
 
@@ -320,7 +329,7 @@ router.post('/state', async (req: Request, res: Response) => {
       }
 
       // Flush to disk and cloud
-      persistDb();
+      await persistDb();
     }
 
     const state = exportDatabaseState();
@@ -337,12 +346,12 @@ router.post('/state', async (req: Request, res: Response) => {
 });
 
 // POST /api/sync/reset - Resets database to default seed state across SQLite and cloud persistence
-router.post('/reset', (req: Request, res: Response) => {
+router.post('/reset', async (req: Request, res: Response) => {
   try {
     const { actorName = 'Admin' } = req.body || {};
     run('DELETE FROM tombstones;');
     seedDatabase();
-    persistDb();
+    await persistDb();
     console.log(`[SYNC_RESET] Database berhasil di-reset oleh ${actorName}`);
     return res.json({
       success: true,

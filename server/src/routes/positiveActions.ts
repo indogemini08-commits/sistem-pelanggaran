@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query, get, run, logAudit } from '../db/database';
+import { query, get, run, logAudit, persistDb, addTombstone } from '../db/database';
 
 const router = Router();
 
@@ -43,7 +43,7 @@ router.get('/:id', (req: Request, res: Response) => {
 });
 
 // POST create new positive action
-router.post('/', (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   try {
     const { code, name, division = 'tahfizh', category, description, defaultPointsDeduction, actorName = 'Admin' } = req.body;
 
@@ -77,6 +77,7 @@ router.post('/', (req: Request, res: Response) => {
       newData: { code: cleanCode, name, division, category, points },
     });
 
+    await persistDb();
     return res.status(201).json({ message: 'Aturan kegiatan baik berhasil ditambahkan', actionId });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -84,7 +85,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // PUT update positive action
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { code, name, division, category, description, defaultPointsDeduction, status, actorName = 'Admin' } = req.body;
@@ -125,29 +126,37 @@ router.put('/:id', (req: Request, res: Response) => {
       newData: { code: cleanCode, name: updatedName, division: updatedDivision, category: updatedCategory, points, status: updatedStatus },
     });
 
+    await persistDb();
     return res.json({ message: 'Aturan kegiatan baik berhasil diperbarui' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-// DELETE positive action (soft delete by status inactive)
-router.delete('/:id', (req: Request, res: Response) => {
+// DELETE positive action (soft delete if in records, otherwise hard delete)
+router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { actorName = 'Admin' } = req.body || {};
 
     const oldAction = get<any>('SELECT * FROM positive_actions WHERE id = ?', [id]);
-    if (!oldAction) return res.json({ message: 'Aturan kegiatan baik sudah tidak ada atau telah dihapus' });
+    if (!oldAction) {
+      addTombstone(id, 'positive_action');
+      await persistDb();
+      return res.json({ message: 'Aturan kegiatan baik sudah tidak ada atau telah dihapus' });
+    }
 
     // Check if used in positive_records
     const usageCount = query<{ count: number }>('SELECT COUNT(*) as count FROM positive_records WHERE action_id = ?', [id])[0]?.count || 0;
     if (usageCount > 0) {
       run('UPDATE positive_actions SET status = "inactive" WHERE id = ?', [id]);
+      await persistDb();
       return res.json({ message: 'Aturan dinonaktifkan karena telah digunakan dalam riwayat santri' });
     }
 
     run('DELETE FROM positive_actions WHERE id = ?', [id]);
+    addTombstone(id, 'positive_action');
+    await persistDb();
 
     logAudit({
       userName: actorName,

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query, get, run, logAudit } from '../db/database';
+import { query, get, run, logAudit, persistDb } from '../db/database';
 
 const router = Router();
 
@@ -59,7 +59,7 @@ router.post('/login', (req: Request, res: Response) => {
   }
 });
 
-router.post('/change-password', (req: Request, res: Response) => {
+router.post('/change-password', async (req: Request, res: Response) => {
   try {
     const { userId, oldPassword, newPassword, actorName } = req.body;
     if (!userId || !newPassword) {
@@ -83,6 +83,7 @@ router.post('/change-password', (req: Request, res: Response) => {
       recordId: userId,
     });
 
+    await persistDb();
     return res.json({ message: 'Password berhasil diperbarui' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });

@@ -288,20 +288,19 @@ async function checkAndSyncCloudSnapshot(importCallback) {
   const providerInfo = getActiveCloudProvider();
   if (providerInfo.provider !== "postgres") return;
   const now = Date.now();
-  if (now - lastCheckTime < 1500) return;
+  if (now - lastCheckTime < 1e3) return;
   lastCheckTime = now;
   try {
     const dbUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
     const sql = neon(dbUrl);
-    const rows = await sql`SELECT updated_at FROM imbs_snapshots WHERE id = 'master_snapshot' LIMIT 1;`;
+    const rows = await sql`SELECT data, updated_at FROM imbs_snapshots WHERE id = 'master_snapshot' LIMIT 1;`;
     if (rows && rows.length > 0 && rows[0].updated_at) {
       const remoteTime = new Date(rows[0].updated_at).toISOString();
       if (localSnapshotTimestamp && remoteTime !== localSnapshotTimestamp) {
         console.log(`[CloudStorage] Remote snapshot is newer (${remoteTime} vs ${localSnapshotTimestamp}), syncing container...`);
-        const fullRows = await sql`SELECT data, updated_at FROM imbs_snapshots WHERE id = 'master_snapshot' LIMIT 1;`;
-        if (fullRows && fullRows.length > 0 && fullRows[0].data) {
-          importCallback(fullRows[0].data);
-          localSnapshotTimestamp = new Date(fullRows[0].updated_at).toISOString();
+        if (rows[0].data && (rows[0].data.version || rows[0].data.timestamp || Array.isArray(rows[0].data.users))) {
+          importCallback(rows[0].data);
+          localSnapshotTimestamp = remoteTime;
         }
       } else if (!localSnapshotTimestamp) {
         localSnapshotTimestamp = remoteTime;
@@ -310,18 +309,11 @@ async function checkAndSyncCloudSnapshot(importCallback) {
   } catch (err) {
   }
 }
-var isSaving = false;
-var pendingSave = null;
 async function saveCloudSnapshot(snapshot) {
   const providerInfo = getActiveCloudProvider();
   if (!providerInfo.isConnected) {
     return false;
   }
-  if (isSaving) {
-    pendingSave = snapshot;
-    return true;
-  }
-  isSaving = true;
   try {
     if (providerInfo.provider === "postgres") {
       const dbUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
@@ -368,13 +360,6 @@ async function saveCloudSnapshot(snapshot) {
     }
   } catch (err) {
     console.error("[CloudStorage] Gagal menyimpan snapshot ke cloud provider:", err?.message || err);
-  } finally {
-    isSaving = false;
-    if (pendingSave) {
-      const next = pendingSave;
-      pendingSave = null;
-      setTimeout(() => saveCloudSnapshot(next), 100);
-    }
   }
   return false;
 }
@@ -608,6 +593,7 @@ function importDatabaseState(snapshot) {
       db.run("DELETE FROM teachers WHERE id IN (SELECT id FROM tombstones);");
       db.run("DELETE FROM violation_records WHERE id IN (SELECT id FROM tombstones);");
       db.run("DELETE FROM positive_records WHERE id IN (SELECT id FROM tombstones);");
+      db.run("DELETE FROM positive_actions WHERE id IN (SELECT id FROM tombstones);");
       db.run("DELETE FROM violations WHERE id IN (SELECT id FROM tombstones);");
       db.run("DELETE FROM users WHERE id IN (SELECT id FROM tombstones) AND id != 'usr_admin_imbs';");
     }
@@ -622,7 +608,7 @@ function importDatabaseState(snapshot) {
   db.run("PRAGMA foreign_keys = ON;");
   persistDb(false);
 }
-function persistDb(syncToCloud = true) {
+async function persistDb(syncToCloud = true) {
   if (!db) return;
   try {
     const data = db.export();
@@ -634,10 +620,9 @@ function persistDb(syncToCloud = true) {
   if (!syncToCloud) return;
   try {
     const state = exportDatabaseState();
-    saveCloudSnapshot(state).catch((e) => {
-      console.warn("[CloudStorage] Async save warning:", e?.message || e);
-    });
+    await saveCloudSnapshot(state);
   } catch (err) {
+    console.warn("[CloudStorage] Save warning:", err);
   }
 }
 function query(sql, params = []) {
@@ -664,7 +649,7 @@ function run(sql, params = []) {
   } else {
     db.run(sql);
   }
-  persistDb();
+  persistDb(false);
 }
 function logAudit(options) {
   const id = "aud_" + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
@@ -1228,7 +1213,7 @@ router.post("/login", (req, res) => {
     return res.status(500).json({ error: "Terjadi kesalahan sistem saat login" });
   }
 });
-router.post("/change-password", (req, res) => {
+router.post("/change-password", async (req, res) => {
   try {
     const { userId, oldPassword, newPassword, actorName } = req.body;
     if (!userId || !newPassword) {
@@ -1247,6 +1232,7 @@ router.post("/change-password", (req, res) => {
       tableName: "users",
       recordId: userId
     });
+    await persistDb();
     return res.json({ message: "Password berhasil diperbarui" });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -1271,7 +1257,7 @@ router2.get("/", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router2.post("/", (req, res) => {
+router2.post("/", async (req, res) => {
   try {
     const { name, email, password, role, status = "active", phone, actorName = "Admin" } = req.body;
     if (!name || !email || !password || !role) {
@@ -1296,7 +1282,7 @@ router2.post("/", (req, res) => {
         [teacherId, userId, name.trim(), phone || ""]
       );
     }
-    persistDb();
+    await persistDb();
     logAudit({
       userName: actorName,
       action: "CREATE_USER",
@@ -1320,7 +1306,7 @@ router2.post("/", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router2.put("/:id", (req, res) => {
+router2.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { name, email, password, role, status, phone, actorName = "Admin" } = req.body;
@@ -1350,7 +1336,7 @@ router2.put("/:id", (req, res) => {
         run('INSERT INTO teachers (id, user_id, name, phone, status) VALUES (?, ?, ?, ?, "active")', [teacherId, id, updatedName, phone || ""]);
       }
     }
-    persistDb();
+    await persistDb();
     logAudit({
       userName: actorName,
       action: "UPDATE_USER",
@@ -1374,12 +1360,14 @@ router2.put("/:id", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router2.delete("/:id", (req, res) => {
+router2.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { actorName = "Admin" } = req.body || {};
     const user = get("SELECT * FROM users WHERE id = ?", [id]);
     if (!user) {
+      addTombstone(id, "user");
+      await persistDb();
       return res.json({ message: "Pengguna sudah tidak ada atau telah dihapus" });
     }
     if (user.role === "admin") {
@@ -1391,7 +1379,7 @@ router2.delete("/:id", (req, res) => {
     run("UPDATE teachers SET user_id = NULL WHERE user_id = ?", [id]);
     run("DELETE FROM users WHERE id = ?", [id]);
     addTombstone(id, "user");
-    persistDb();
+    await persistDb();
     logAudit({
       userName: actorName,
       action: "DELETE_USER",
@@ -1432,7 +1420,7 @@ router3.get("/", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router3.post("/", (req, res) => {
+router3.post("/", async (req, res) => {
   try {
     const { name, phone, userId, status = "active", actorName = "Admin" } = req.body;
     if (!name) {
@@ -1451,13 +1439,13 @@ router3.post("/", (req, res) => {
       recordId: teacherId,
       newData: { name, phone, userId, status }
     });
-    persistDb();
+    await persistDb();
     return res.status(201).json({ message: "Data Muhafizh berhasil ditambahkan", teacherId });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 });
-router3.put("/:id", (req, res) => {
+router3.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { name, phone, userId, status, actorName = "Admin" } = req.body;
@@ -1484,13 +1472,13 @@ router3.put("/:id", (req, res) => {
       oldData: oldTeacher,
       newData: { name: updatedName, phone: updatedPhone, status: updatedStatus }
     });
-    persistDb();
+    await persistDb();
     return res.json({ message: "Data Muhafizh berhasil diperbarui" });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 });
-router3.delete("/:id", (req, res) => {
+router3.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { actorName = "Admin" } = req.body || {};
@@ -1511,7 +1499,7 @@ router3.delete("/:id", (req, res) => {
       recordId: id,
       oldData: teacher
     });
-    persistDb();
+    await persistDb();
     return res.json({ message: "Muhafizh berhasil dihapus" });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -1537,7 +1525,7 @@ router4.get("/", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router4.post("/", (req, res) => {
+router4.post("/", async (req, res) => {
   try {
     const { name, teacherId, schedule, location, academicYear = "2025/2026", status = "active", actorName = "Admin" } = req.body;
     if (!name) {
@@ -1556,13 +1544,13 @@ router4.post("/", (req, res) => {
       recordId: halaqahId,
       newData: { name, teacherId, schedule, location }
     });
-    persistDb();
+    await persistDb();
     return res.status(201).json({ message: "Halaqah berhasil dibuat", halaqahId });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 });
-router4.put("/:id", (req, res) => {
+router4.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { name, teacherId, schedule, location, academicYear, status, actorName = "Admin" } = req.body;
@@ -1588,13 +1576,13 @@ router4.put("/:id", (req, res) => {
       oldData: oldHalaqah,
       newData: { name: updatedName, teacher_id: updatedTeacherId, schedule: updatedSchedule, location: updatedLocation }
     });
-    persistDb();
+    await persistDb();
     return res.json({ message: "Data halaqah berhasil diperbarui" });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 });
-router4.delete("/:id", (req, res) => {
+router4.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { actorName = "Admin" } = req.body || {};
@@ -1615,8 +1603,59 @@ router4.delete("/:id", (req, res) => {
       recordId: id,
       oldData: halaqah
     });
-    persistDb();
+    await persistDb();
     return res.json({ message: "Halaqah berhasil dihapus" });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+router4.post("/transfer", async (req, res) => {
+  try {
+    const { studentId, toHalaqahId, toTeacherId, reason, actorName = "Admin" } = req.body;
+    if (!studentId || !toHalaqahId) {
+      return res.status(400).json({ error: "ID Santri dan ID Halaqah tujuan wajib diisi" });
+    }
+    const student = get("SELECT * FROM students WHERE id = ?", [studentId]);
+    if (!student) return res.status(404).json({ error: "Santri tidak ditemukan" });
+    run("UPDATE students SET halaqah_id = ? WHERE id = ?", [toHalaqahId, studentId]);
+    const histId = "hist_" + Math.random().toString(36).substring(2, 8);
+    run(
+      `INSERT INTO student_halaqah_history (id, student_id, halaqah_id, teacher_id, academic_year, class, start_date)
+       VALUES (?, ?, ?, ?, ?, ?, date('now', 'localtime'))`,
+      [histId, studentId, toHalaqahId, toTeacherId || null, student.academic_year || "2025/2026", student.class]
+    );
+    logAudit({
+      userName: actorName,
+      action: "TRANSFER_STUDENT_HALAQAH",
+      tableName: "students",
+      recordId: studentId,
+      newData: { toHalaqahId, toTeacherId, reason }
+    });
+    await persistDb();
+    return res.json({ message: "Santri berhasil dipindahkan halaqah" });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+router4.get("/history", (req, res) => {
+  try {
+    const { studentId } = req.query;
+    let sql = `
+      SELECT shh.*, s.name as student_name, s.student_number, h.name as halaqah_name, t.name as teacher_name
+      FROM student_halaqah_history shh
+      JOIN students s ON s.id = shh.student_id
+      LEFT JOIN halaqah h ON h.id = shh.halaqah_id
+      LEFT JOIN teachers t ON t.id = shh.teacher_id
+      WHERE 1=1
+    `;
+    const params = [];
+    if (studentId) {
+      sql += " AND shh.student_id = ?";
+      params.push(studentId);
+    }
+    sql += " ORDER BY shh.start_date DESC";
+    const rows = query(sql, params);
+    return res.json(rows);
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -1866,7 +1905,7 @@ router5.get("/:id", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router5.post("/", (req, res) => {
+router5.post("/", async (req, res) => {
   try {
     const {
       studentNumber,
@@ -1907,12 +1946,13 @@ router5.post("/", (req, res) => {
       recordId: studentId,
       newData: { studentNumber: cleanNIS, name, class: studentClass, gender, halaqahId }
     });
+    await persistDb();
     return res.status(201).json({ message: "Santri berhasil ditambahkan", studentId });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 });
-router5.put("/:id", (req, res) => {
+router5.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -1961,12 +2001,13 @@ router5.put("/:id", (req, res) => {
       oldData: old,
       newData: { studentNumber: cleanNIS, name: updatedName, class: updatedClass, halaqahId: updatedHalaqahId }
     });
+    await persistDb();
     return res.json({ message: "Data santri berhasil diperbarui" });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 });
-router5.delete("/:id", (req, res) => {
+router5.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { actorName = "Admin" } = req.body || {};
@@ -1980,7 +2021,7 @@ router5.delete("/:id", (req, res) => {
     run("DELETE FROM positive_records WHERE student_id = ?", [targetId]);
     run("DELETE FROM students WHERE id = ?", [targetId]);
     addTombstone(targetId, "student");
-    persistDb();
+    await persistDb();
     logAudit({
       userName: actorName,
       action: "DELETE_STUDENT",
@@ -1995,7 +2036,7 @@ router5.delete("/:id", (req, res) => {
     return res.status(500).json({ error: err.message || "Gagal menghapus santri dari database" });
   }
 });
-router5.post("/bulk-delete", (req, res) => {
+router5.post("/bulk-delete", async (req, res) => {
   try {
     const { ids, actorName = "Admin" } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -2023,7 +2064,7 @@ router5.post("/bulk-delete", (req, res) => {
       });
       deleted.push(student.id);
     }
-    persistDb();
+    await persistDb();
     console.log(`[BULK_DELETE] ${deleted.length} santri dihapus permanen oleh ${actorName}`);
     return res.json({
       success: true,
@@ -2037,7 +2078,7 @@ router5.post("/bulk-delete", (req, res) => {
     return res.status(500).json({ error: err.message || "Gagal menghapus santri secara massal" });
   }
 });
-router5.post("/import", (req, res) => {
+router5.post("/import", async (req, res) => {
   try {
     const { rows, actorName = "Admin" } = req.body;
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -2120,6 +2161,7 @@ router5.post("/import", (req, res) => {
       tableName: "students",
       newData: { insertedCount, errorsCount: errors.length }
     });
+    await persistDb();
     return res.json({
       message: `Berhasil mengimpor ${insertedCount} santri ke database.`,
       insertedCount,
@@ -2157,7 +2199,7 @@ router6.get("/", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router6.post("/", (req, res) => {
+router6.post("/", async (req, res) => {
   try {
     const { code, name, category, defaultPoints, description, division = "tahfizh", status = "active", actorName = "Admin" } = req.body;
     if (!name || !category || defaultPoints === void 0 || defaultPoints <= 0) {
@@ -2189,7 +2231,7 @@ router6.post("/", (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
       [violationId, cleanCode, name.trim(), cleanDivision, category, description || "", parseInt(defaultPoints, 10), status]
     );
-    persistDb();
+    await persistDb();
     logAudit({
       userName: actorName,
       action: "CREATE_MASTER_VIOLATION",
@@ -2202,7 +2244,7 @@ router6.post("/", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router6.put("/:id", (req, res) => {
+router6.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { code, name, category, defaultPoints, description, division, status, actorName = "Admin" } = req.body;
@@ -2228,7 +2270,7 @@ router6.put("/:id", (req, res) => {
        WHERE id = ?`,
       [cleanCode, updatedName, updatedDivision, updatedCategory, updatedPoints, updatedDesc, updatedStatus, id]
     );
-    persistDb();
+    await persistDb();
     logAudit({
       userName: actorName,
       action: "UPDATE_MASTER_VIOLATION",
@@ -2244,7 +2286,7 @@ router6.put("/:id", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router6.post("/bulk-delete", (req, res) => {
+router6.post("/bulk-delete", async (req, res) => {
   try {
     const { ids, actorName = "Admin" } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -2266,7 +2308,7 @@ router6.post("/bulk-delete", (req, res) => {
       });
       deleted.push(id);
     }
-    persistDb();
+    await persistDb();
     return res.json({
       success: true,
       deletedCount: deleted.length,
@@ -2277,19 +2319,19 @@ router6.post("/bulk-delete", (req, res) => {
     return res.status(500).json({ error: err.message || "Gagal menghapus pelanggaran secara massal" });
   }
 });
-router6.delete("/:id", (req, res) => {
+router6.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { actorName = "Admin" } = req.body || {};
     addTombstone(id, "violation");
     const violation = get("SELECT * FROM violations WHERE id = ?", [id]);
     if (!violation) {
-      persistDb();
+      await persistDb();
       return res.json({ message: "Pelanggaran sudah tidak ada atau telah dihapus" });
     }
     run("UPDATE violation_records SET violation_id = NULL WHERE violation_id = ?", [id]);
     run("DELETE FROM violations WHERE id = ?", [id]);
-    persistDb();
+    await persistDb();
     logAudit({
       userName: actorName,
       action: "DELETE_MASTER_VIOLATION",
@@ -2412,7 +2454,7 @@ router7.get("/", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router7.post("/", (req, res) => {
+router7.post("/", async (req, res) => {
   try {
     const {
       studentId,
@@ -2550,6 +2592,7 @@ router7.post("/", (req, res) => {
         kesantrianPoints
       }
     });
+    await persistDb();
     return res.status(201).json({
       message: "Pelanggaran berhasil dicatat.",
       recordId,
@@ -2566,7 +2609,7 @@ router7.post("/", (req, res) => {
     return res.status(500).json({ error: "Data belum berhasil disimpan. Silakan coba kembali." });
   }
 });
-router7.put("/:id/cancel", (req, res) => {
+router7.put("/:id/cancel", async (req, res) => {
   try {
     const { id } = req.params;
     const { cancellationReason, actorName = "Admin" } = req.body;
@@ -2581,7 +2624,7 @@ router7.put("/:id/cancel", (req, res) => {
        WHERE id = ?`,
       [actorName, cancellationReason || "Dibatalkan oleh pengawas", id]
     );
-    persistDb();
+    await persistDb();
     logAudit({
       userName: actorName,
       action: "CANCEL_VIOLATION_RECORD",
@@ -2595,7 +2638,7 @@ router7.put("/:id/cancel", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router7.delete("/:id", (req, res) => {
+router7.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { actorName = "Admin" } = req.body || {};
@@ -2605,7 +2648,7 @@ router7.delete("/:id", (req, res) => {
     }
     run("DELETE FROM violation_records WHERE id = ?", [id]);
     addTombstone(id, "record");
-    persistDb();
+    await persistDb();
     logAudit({
       userName: actorName,
       action: "HARD_DELETE_VIOLATION_RECORD",
@@ -2618,7 +2661,7 @@ router7.delete("/:id", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router7.post("/bulk-delete", (req, res) => {
+router7.post("/bulk-delete", async (req, res) => {
   try {
     const { ids, actorName = "Admin" } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -2642,7 +2685,7 @@ router7.post("/bulk-delete", (req, res) => {
       });
       deleted.push(id);
     }
-    persistDb();
+    await persistDb();
     return res.json({
       success: true,
       deletedCount: deleted.length,
@@ -2822,7 +2865,7 @@ router8.get("/", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router8.put("/school", (req, res) => {
+router8.put("/school", async (req, res) => {
   try {
     const {
       appName,
@@ -2858,12 +2901,13 @@ router8.put("/school", (req, res) => {
       oldData: old,
       newData: { appName: updatedAppName, schoolName: updatedSchoolName, address: updatedAddress, logoUrl: updatedLogo }
     });
+    await persistDb();
     return res.json({ message: "Pengaturan identitas sekolah & aplikasi berhasil disimpan" });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 });
-router8.put("/thresholds", (req, res) => {
+router8.put("/thresholds", async (req, res) => {
   try {
     const { thresholds, actorName = "Admin" } = req.body;
     if (!Array.isArray(thresholds)) {
@@ -2895,6 +2939,7 @@ router8.put("/thresholds", (req, res) => {
       oldData: oldThresholds,
       newData: thresholds
     });
+    await persistDb();
     return res.json({ message: "Batas status poin berhasil diperbarui" });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -2962,7 +3007,7 @@ router10.get("/:id", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router10.post("/", (req, res) => {
+router10.post("/", async (req, res) => {
   try {
     const { code, name, division = "tahfizh", category, description, defaultPointsDeduction, actorName = "Admin" } = req.body;
     if (!code || !name || !category || !defaultPointsDeduction) {
@@ -2990,12 +3035,13 @@ router10.post("/", (req, res) => {
       recordId: actionId,
       newData: { code: cleanCode, name, division, category, points }
     });
+    await persistDb();
     return res.status(201).json({ message: "Aturan kegiatan baik berhasil ditambahkan", actionId });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 });
-router10.put("/:id", (req, res) => {
+router10.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { code, name, division, category, description, defaultPointsDeduction, status, actorName = "Admin" } = req.body;
@@ -3029,23 +3075,31 @@ router10.put("/:id", (req, res) => {
       oldData: oldAction,
       newData: { code: cleanCode, name: updatedName, division: updatedDivision, category: updatedCategory, points, status: updatedStatus }
     });
+    await persistDb();
     return res.json({ message: "Aturan kegiatan baik berhasil diperbarui" });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 });
-router10.delete("/:id", (req, res) => {
+router10.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { actorName = "Admin" } = req.body || {};
     const oldAction = get("SELECT * FROM positive_actions WHERE id = ?", [id]);
-    if (!oldAction) return res.json({ message: "Aturan kegiatan baik sudah tidak ada atau telah dihapus" });
+    if (!oldAction) {
+      addTombstone(id, "positive_action");
+      await persistDb();
+      return res.json({ message: "Aturan kegiatan baik sudah tidak ada atau telah dihapus" });
+    }
     const usageCount = query("SELECT COUNT(*) as count FROM positive_records WHERE action_id = ?", [id])[0]?.count || 0;
     if (usageCount > 0) {
       run('UPDATE positive_actions SET status = "inactive" WHERE id = ?', [id]);
+      await persistDb();
       return res.json({ message: "Aturan dinonaktifkan karena telah digunakan dalam riwayat santri" });
     }
     run("DELETE FROM positive_actions WHERE id = ?", [id]);
+    addTombstone(id, "positive_action");
+    await persistDb();
     logAudit({
       userName: actorName,
       action: "DELETE_POSITIVE_ACTION",
@@ -3112,7 +3166,7 @@ router11.get("/", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router11.post("/", (req, res) => {
+router11.post("/", async (req, res) => {
   try {
     const {
       studentId,
@@ -3215,6 +3269,7 @@ router11.post("/", (req, res) => {
         date: recordDate
       }
     });
+    await persistDb();
     return res.status(201).json({
       message: "Kegiatan baik / pengurangan poin berhasil dicatat",
       recordId,
@@ -3224,7 +3279,7 @@ router11.post("/", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router11.put("/:id/cancel", (req, res) => {
+router11.put("/:id/cancel", async (req, res) => {
   try {
     const { id } = req.params;
     const { reason, actorName = "Admin" } = req.body;
@@ -3245,7 +3300,7 @@ router11.put("/:id/cancel", (req, res) => {
        WHERE id = ?`,
       [actorName, reason.trim(), id]
     );
-    persistDb();
+    await persistDb();
     logAudit({
       userName: actorName,
       action: "CANCEL_POSITIVE_RECORD",
@@ -3259,7 +3314,7 @@ router11.put("/:id/cancel", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router11.delete("/:id", (req, res) => {
+router11.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { actorName = "Admin" } = req.body || {};
@@ -3269,7 +3324,7 @@ router11.delete("/:id", (req, res) => {
     }
     run("DELETE FROM positive_records WHERE id = ?", [id]);
     addTombstone(id, "positive_record");
-    persistDb();
+    await persistDb();
     logAudit({
       userName: actorName,
       action: "DELETE_POSITIVE_RECORD",
@@ -3282,7 +3337,7 @@ router11.delete("/:id", (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-router11.post("/bulk-delete", (req, res) => {
+router11.post("/bulk-delete", async (req, res) => {
   try {
     const { ids, actorName = "Admin" } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -3306,7 +3361,7 @@ router11.post("/bulk-delete", (req, res) => {
       });
       deleted.push(id);
     }
-    persistDb();
+    await persistDb();
     return res.json({
       success: true,
       deletedCount: deleted.length,
@@ -3349,6 +3404,7 @@ router12.post("/state", async (req, res) => {
     const { clientState, delta } = req.body || {};
     if (clientState && clientState.students) {
       importDatabaseState(clientState);
+      await persistDb();
       return res.json({
         success: true,
         message: "State database berhasil diperbarui secara penuh",
@@ -3405,6 +3461,13 @@ router12.post("/state", async (req, res) => {
           run("UPDATE violation_records SET violation_id = NULL WHERE violation_id = ?", [id]);
           run("DELETE FROM violations WHERE id = ?", [id]);
           addTombstone(id, "violation");
+        }
+      }
+      if (Array.isArray(delta.deletedActionIds)) {
+        for (const id of delta.deletedActionIds) {
+          run("UPDATE positive_records SET action_id = NULL WHERE action_id = ?", [id]);
+          run("DELETE FROM positive_actions WHERE id = ?", [id]);
+          addTombstone(id, "positive_action");
         }
       }
       if (Array.isArray(delta.createdStudents)) {
@@ -3604,7 +3667,7 @@ router12.post("/state", async (req, res) => {
           );
         }
       }
-      persistDb();
+      await persistDb();
     }
     const state = exportDatabaseState();
     return res.json({
@@ -3618,12 +3681,12 @@ router12.post("/state", async (req, res) => {
     return res.status(500).json({ error: err?.message || "Gagal memproses sinkronisasi" });
   }
 });
-router12.post("/reset", (req, res) => {
+router12.post("/reset", async (req, res) => {
   try {
     const { actorName = "Admin" } = req.body || {};
     run("DELETE FROM tombstones;");
     seedDatabase();
-    persistDb();
+    await persistDb();
     console.log(`[SYNC_RESET] Database berhasil di-reset oleh ${actorName}`);
     return res.json({
       success: true,
@@ -3650,15 +3713,18 @@ async function ensureDbInitialized() {
       await getDb();
       try {
         const cloudSnapshot = await loadCloudSnapshot();
-        if (cloudSnapshot && Array.isArray(cloudSnapshot.students) && cloudSnapshot.students.length > 0) {
-          console.log(`Memuat ${cloudSnapshot.students.length} data santri dari Cloud Snapshot...`);
+        if (cloudSnapshot && (cloudSnapshot.version || cloudSnapshot.timestamp || Array.isArray(cloudSnapshot.users))) {
+          console.log("Memuat data dari Cloud Snapshot...");
           importDatabaseState(cloudSnapshot);
         } else {
+          console.log("Cloud snapshot belum ada, melakukan seeding awal...");
           seedDatabase();
+          await persistDb();
         }
       } catch (e) {
         console.warn("Gagal memeriksa cloud snapshot, menggunakan seeder lokal:", e?.message || e);
         seedDatabase();
+        await persistDb();
       }
       console.log("Engine database SQLite & cloud synchronization siap digunakan.");
     })().catch((err) => {

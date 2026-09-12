@@ -21,7 +21,7 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // POST create halaqah
-router.post('/', (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   try {
     const { name, teacherId, schedule, location, academicYear = '2025/2026', status = 'active', actorName = 'Admin' } = req.body;
     if (!name) {
@@ -43,7 +43,7 @@ router.post('/', (req: Request, res: Response) => {
       newData: { name, teacherId, schedule, location },
     });
 
-    persistDb();
+    await persistDb();
     return res.status(201).json({ message: 'Halaqah berhasil dibuat', halaqahId });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -51,7 +51,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // PUT update halaqah (FLEXIBLE NAME EDITING)
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { name, teacherId, schedule, location, academicYear, status, actorName = 'Admin' } = req.body;
@@ -82,7 +82,7 @@ router.put('/:id', (req: Request, res: Response) => {
       newData: { name: updatedName, teacher_id: updatedTeacherId, schedule: updatedSchedule, location: updatedLocation },
     });
 
-    persistDb();
+    await persistDb();
     return res.json({ message: 'Data halaqah berhasil diperbarui' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -90,7 +90,7 @@ router.put('/:id', (req: Request, res: Response) => {
 });
 
 // DELETE halaqah
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { actorName = 'Admin' } = req.body || {};
@@ -116,8 +116,67 @@ router.delete('/:id', (req: Request, res: Response) => {
       oldData: halaqah,
     });
 
-    persistDb();
+    await persistDb();
     return res.json({ message: 'Halaqah berhasil dihapus' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST transfer student to another halaqah
+router.post('/transfer', async (req: Request, res: Response) => {
+  try {
+    const { studentId, toHalaqahId, toTeacherId, reason, actorName = 'Admin' } = req.body;
+    if (!studentId || !toHalaqahId) {
+      return res.status(400).json({ error: 'ID Santri dan ID Halaqah tujuan wajib diisi' });
+    }
+    const student = get<any>('SELECT * FROM students WHERE id = ?', [studentId]);
+    if (!student) return res.status(404).json({ error: 'Santri tidak ditemukan' });
+
+    run('UPDATE students SET halaqah_id = ? WHERE id = ?', [toHalaqahId, studentId]);
+
+    const histId = 'hist_' + Math.random().toString(36).substring(2, 8);
+    run(
+      `INSERT INTO student_halaqah_history (id, student_id, halaqah_id, teacher_id, academic_year, class, start_date)
+       VALUES (?, ?, ?, ?, ?, ?, date('now', 'localtime'))`,
+      [histId, studentId, toHalaqahId, toTeacherId || null, student.academic_year || '2025/2026', student.class]
+    );
+
+    logAudit({
+      userName: actorName,
+      action: 'TRANSFER_STUDENT_HALAQAH',
+      tableName: 'students',
+      recordId: studentId,
+      newData: { toHalaqahId, toTeacherId, reason },
+    });
+
+    await persistDb();
+    return res.json({ message: 'Santri berhasil dipindahkan halaqah' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET halaqah history
+router.get('/history', (req: Request, res: Response) => {
+  try {
+    const { studentId } = req.query;
+    let sql = `
+      SELECT shh.*, s.name as student_name, s.student_number, h.name as halaqah_name, t.name as teacher_name
+      FROM student_halaqah_history shh
+      JOIN students s ON s.id = shh.student_id
+      LEFT JOIN halaqah h ON h.id = shh.halaqah_id
+      LEFT JOIN teachers t ON t.id = shh.teacher_id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+    if (studentId) {
+      sql += ' AND shh.student_id = ?';
+      params.push(studentId);
+    }
+    sql += ' ORDER BY shh.start_date DESC';
+    const rows = query<any>(sql, params);
+    return res.json(rows);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
