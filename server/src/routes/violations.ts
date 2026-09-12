@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query, get, run, logAudit, persistDb } from '../db/database';
+import { query, get, run, logAudit, persistDb, addTombstone } from '../db/database';
 
 const router = Router();
 
@@ -145,6 +145,7 @@ router.post('/bulk-delete', (req: Request, res: Response) => {
 
     const deleted: string[] = [];
     for (const id of ids) {
+      addTombstone(id, 'violation');
       const violation = get<any>('SELECT * FROM violations WHERE id = ?', [id]);
       if (!violation) continue;
 
@@ -178,8 +179,10 @@ router.delete('/:id', (req: Request, res: Response) => {
     const { id } = req.params;
     const { actorName = 'Admin' } = req.body || {};
 
+    addTombstone(id, 'violation');
     const violation = get<any>('SELECT * FROM violations WHERE id = ?', [id]);
     if (!violation) {
+      persistDb();
       return res.json({ message: 'Pelanggaran sudah tidak ada atau telah dihapus' });
     }
 

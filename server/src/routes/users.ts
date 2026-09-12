@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query, get, run, logAudit, persistDb } from '../db/database';
+import { query, get, run, logAudit, persistDb, addTombstone } from '../db/database';
 
 const router = Router();
 
@@ -166,6 +166,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     // Set teachers user_id to NULL
     run('UPDATE teachers SET user_id = NULL WHERE user_id = ?', [id]);
     run('DELETE FROM users WHERE id = ?', [id]);
+    addTombstone(id, 'user');
 
     // Persist immediately to disk
     persistDb();

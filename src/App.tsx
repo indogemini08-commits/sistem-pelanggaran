@@ -54,20 +54,10 @@ export function App() {
       }
     }
 
-    // Synchronize with server to ensure multi-device consistency
+    // Synchronize with server once on mount to ensure multi-device consistency
     storageSync.syncWithServer().finally(() => {
       loadSettings();
     });
-
-    // Re-sync whenever user returns to the tab or browser window
-    const handleWindowFocus = () => {
-      storageSync.syncWithServer().catch(() => {});
-    };
-
-    window.addEventListener('focus', handleWindowFocus);
-    return () => {
-      window.removeEventListener('focus', handleWindowFocus);
-    };
   }, []);
 
   const loadSettings = async () => {

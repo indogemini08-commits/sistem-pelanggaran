@@ -55,6 +55,13 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
 
   useEffect(() => {
     loadUsers();
+    const handleDataChanged = () => {
+      loadUsers();
+    };
+    window.addEventListener('app:data-changed', handleDataChanged);
+    return () => {
+      window.removeEventListener('app:data-changed', handleDataChanged);
+    };
   }, []);
 
   const loadUsers = async () => {

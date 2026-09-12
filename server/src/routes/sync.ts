@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query, get, run, persistDb, exportDatabaseState, importDatabaseState } from '../db/database';
+import { query, get, run, persistDb, exportDatabaseState, importDatabaseState, addTombstone } from '../db/database';
 import { getActiveCloudProvider, loadCloudSnapshot, saveCloudSnapshot } from '../db/cloudStorage';
 
 const router = Router();
@@ -54,18 +54,21 @@ router.post('/state', async (req: Request, res: Response) => {
           run('DELETE FROM violation_records WHERE student_id = ?', [id]);
           run('DELETE FROM positive_records WHERE student_id = ?', [id]);
           run('DELETE FROM students WHERE id = ?', [id]);
+          addTombstone(id, 'student');
         }
       }
 
       if (Array.isArray(delta.deletedRecordIds)) {
         for (const id of delta.deletedRecordIds) {
           run('DELETE FROM violation_records WHERE id = ?', [id]);
+          addTombstone(id, 'record');
         }
       }
 
       if (Array.isArray(delta.deletedPosRecordIds)) {
         for (const id of delta.deletedPosRecordIds) {
           run('DELETE FROM positive_records WHERE id = ?', [id]);
+          addTombstone(id, 'positive_record');
         }
       }
 
@@ -73,6 +76,7 @@ router.post('/state', async (req: Request, res: Response) => {
         for (const id of delta.deletedHalaqahIds) {
           run('UPDATE students SET halaqah_id = NULL WHERE halaqah_id = ?', [id]);
           run('DELETE FROM halaqah WHERE id = ?', [id]);
+          addTombstone(id, 'halaqah');
         }
       }
 
@@ -80,6 +84,7 @@ router.post('/state', async (req: Request, res: Response) => {
         for (const id of delta.deletedTeacherIds) {
           run('UPDATE halaqah SET teacher_id = NULL WHERE teacher_id = ?', [id]);
           run('DELETE FROM teachers WHERE id = ?', [id]);
+          addTombstone(id, 'teacher');
         }
       }
 
@@ -88,7 +93,16 @@ router.post('/state', async (req: Request, res: Response) => {
           // Do not delete default admin imbs@aldri
           if (id !== 'usr_admin_imbs') {
             run('DELETE FROM users WHERE id = ?', [id]);
+            addTombstone(id, 'user');
           }
+        }
+      }
+
+      if (Array.isArray(delta.deletedViolationIds)) {
+        for (const id of delta.deletedViolationIds) {
+          run('UPDATE violation_records SET violation_id = NULL WHERE violation_id = ?', [id]);
+          run('DELETE FROM violations WHERE id = ?', [id]);
+          addTombstone(id, 'violation');
         }
       }
 
@@ -222,6 +236,19 @@ router.post('/state', async (req: Request, res: Response) => {
         }
       }
 
+      if (Array.isArray(delta.createdUsers)) {
+        for (const u of delta.createdUsers) {
+          const exists = get('SELECT id FROM users WHERE id = ? OR LOWER(email) = ?', [u.id, (u.email || '').toLowerCase()]);
+          if (!exists) {
+            run(
+              `INSERT INTO users (id, name, email, password_hash, role, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              [u.id, u.name, (u.email || '').toLowerCase(), u.password || 'admin123', u.role || 'teacher', u.status || 'active', u.created_at || new Date().toISOString()]
+            );
+          }
+        }
+      }
+
       // Cancellations
       if (delta.cancelledRecords && typeof delta.cancelledRecords === 'object') {
         for (const [id, reason] of Object.entries(delta.cancelledRecords)) {
@@ -232,6 +259,62 @@ router.post('/state', async (req: Request, res: Response) => {
       if (delta.cancelledPosRecords && typeof delta.cancelledPosRecords === 'object') {
         for (const [id, reason] of Object.entries(delta.cancelledPosRecords)) {
           run("UPDATE positive_records SET status = 'cancelled', cancellation_reason = ? WHERE id = ?", [reason, id]);
+        }
+      }
+
+      // Entity Updates
+      if (delta.updatedStudents && typeof delta.updatedStudents === 'object') {
+        for (const [id, up] of Object.entries(delta.updatedStudents as Record<string, any>)) {
+          run(
+            `UPDATE students SET
+              name = COALESCE(?, name),
+              student_number = COALESCE(?, student_number),
+              class = COALESCE(?, class),
+              halaqah_id = COALESCE(?, halaqah_id)
+             WHERE id = ?`,
+            [up.name || null, up.student_number || null, up.class || null, up.halaqah_id || null, id]
+          );
+        }
+      }
+
+      if (delta.updatedHalaqahs && typeof delta.updatedHalaqahs === 'object') {
+        for (const [id, up] of Object.entries(delta.updatedHalaqahs as Record<string, any>)) {
+          run(
+            `UPDATE halaqah SET
+              name = COALESCE(?, name),
+              teacher_id = COALESCE(?, teacher_id),
+              schedule = COALESCE(?, schedule),
+              location = COALESCE(?, location)
+             WHERE id = ?`,
+            [up.name || null, up.teacher_id || null, up.schedule || null, up.location || null, id]
+          );
+        }
+      }
+
+      if (delta.updatedTeachers && typeof delta.updatedTeachers === 'object') {
+        for (const [id, up] of Object.entries(delta.updatedTeachers as Record<string, any>)) {
+          run(
+            `UPDATE teachers SET
+              name = COALESCE(?, name),
+              phone = COALESCE(?, phone),
+              status = COALESCE(?, status)
+             WHERE id = ?`,
+            [up.name || null, up.phone || null, up.status || null, id]
+          );
+        }
+      }
+
+      if (delta.updatedUsers && typeof delta.updatedUsers === 'object') {
+        for (const [id, up] of Object.entries(delta.updatedUsers as Record<string, any>)) {
+          run(
+            `UPDATE users SET
+              name = COALESCE(?, name),
+              email = COALESCE(?, email),
+              role = COALESCE(?, role),
+              status = COALESCE(?, status)
+             WHERE id = ?`,
+            [up.name || null, up.email || null, up.role || null, up.status || null, id]
+          );
         }
       }
 

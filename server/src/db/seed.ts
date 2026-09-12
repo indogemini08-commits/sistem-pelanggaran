@@ -1,4 +1,4 @@
-import { query, run, logAudit } from './database';
+import { query, run, logAudit, getTombstones } from './database';
 
 export function seedStudentsIfEmpty() {
   const userCount = query<{ count: number }>('SELECT COUNT(*) as count FROM users')[0]?.count || 0;
@@ -9,6 +9,7 @@ export function seedStudentsIfEmpty() {
   const studentCount = query<{ count: number }>('SELECT COUNT(*) as count FROM students')[0]?.count || 0;
   if (studentCount > 0) return;
 
+  const tombstones = getTombstones();
   console.log('Tabel santri kosong, menginisialisasi 10 santri awal...');
   const halaqahs = query<{ id: string; teacher_id: string }>('SELECT id, teacher_id FROM halaqah');
   const students = [
@@ -25,6 +26,7 @@ export function seedStudentsIfEmpty() {
   ];
 
   for (const s of students) {
+    if (tombstones.has(s.id)) continue;
     run(
       `INSERT INTO students (id, student_number, name, class, gender, halaqah_id, academic_year, status)
        VALUES (?, ?, ?, ?, ?, ?, '2025/2026', 'active')`,
@@ -59,8 +61,10 @@ export function seedKesantrianViolationsIfEmpty() {
   const ksCount = query<{ count: number }>("SELECT COUNT(*) as count FROM violations WHERE division = 'kesantrian'")[0]?.count || 0;
   if (ksCount > 0) return;
 
+  const tombstones = getTombstones();
   console.log('Menginisialisasi master pelanggaran divisi kesantrian...');
   for (const v of DEFAULT_KESANTRIAN_VIOLATIONS) {
+    if (tombstones.has(v.id)) continue;
     run(
       `INSERT INTO violations (id, code, name, division, category, description, default_points, status)
        VALUES (?, ?, ?, 'kesantrian', ?, ?, ?, 'active')`,
@@ -113,6 +117,7 @@ export function seedKesantrianViolationsIfEmpty() {
   ];
 
   for (const r of sampleKsRecords) {
+    if (tombstones.has(r.id) || tombstones.has(r.studentId)) continue;
     const stdExists = query<{ id: string }>('SELECT id FROM students WHERE id = ?', [r.studentId]);
     if (stdExists.length === 0) continue;
     const exists = query<{ id: string }>('SELECT id FROM violation_records WHERE id = ?', [r.id]);
@@ -182,9 +187,11 @@ export const DEFAULT_POSITIVE_ACTIONS = [
 
 export function seedPositiveActionsIfEmpty() {
   const count = query<{ count: number }>("SELECT COUNT(*) as count FROM positive_actions")[0]?.count || 0;
+  const tombstones = getTombstones();
   if (count === 0) {
     console.log('Menginisialisasi master kegiatan baik (kebaikan & prestasi)...');
     for (const a of DEFAULT_POSITIVE_ACTIONS) {
+      if (tombstones.has(a.id)) continue;
       run(
         `INSERT INTO positive_actions (id, code, name, division, category, description, default_points_deduction, status)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`,
@@ -195,7 +202,7 @@ export function seedPositiveActionsIfEmpty() {
 
   const posCount = query<{ count: number }>("SELECT COUNT(*) as count FROM positive_records")[0]?.count || 0;
   const std002Exists = query<{ id: string }>("SELECT id FROM students WHERE id = 'std_002'")[0];
-  if (posCount === 0 && std002Exists) {
+  if (posCount === 0 && std002Exists && !tombstones.has('pos_rec_001') && !tombstones.has('std_002')) {
     const today = new Date().toISOString().split('T')[0];
     run(
       `INSERT INTO positive_records (
@@ -240,10 +247,11 @@ export function seedDatabase() {
   }
 
   console.log('Mengisi data awal database (seeding)...');
+  const tombstones = getTombstones();
 
   // 1. Settings
   run(`
-    INSERT INTO school_settings (id, app_name, school_name, address, phone, email, logo_url, kop_surat_text, current_academic_year)
+    INSERT OR IGNORE INTO school_settings (id, app_name, school_name, address, phone, email, logo_url, kop_surat_text, current_academic_year)
     VALUES (
       'settings_default',
       'Sistem Poin Santri Halaqah',
@@ -268,7 +276,7 @@ export function seedDatabase() {
 
   for (const th of thresholds) {
     run(
-      `INSERT INTO point_thresholds (id, minimum_points, maximum_points, status_name, badge_color, description, sort_order)
+      `INSERT OR IGNORE INTO point_thresholds (id, minimum_points, maximum_points, status_name, badge_color, description, sort_order)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [th.id, th.min, th.max, th.name, th.color, th.desc, th.order]
     );
@@ -285,8 +293,9 @@ export function seedDatabase() {
   ];
 
   for (const u of users) {
+    if (tombstones.has(u.id)) continue;
     run(
-      `INSERT INTO users (id, name, email, password_hash, role, status)
+      `INSERT OR IGNORE INTO users (id, name, email, password_hash, role, status)
        VALUES (?, ?, ?, ?, ?, 'active')`,
       [u.id, u.name, u.email, u.pass, u.role]
     );
@@ -300,8 +309,9 @@ export function seedDatabase() {
   ];
 
   for (const t of teachers) {
+    if (tombstones.has(t.id)) continue;
     run(
-      `INSERT INTO teachers (id, user_id, name, phone, status)
+      `INSERT OR IGNORE INTO teachers (id, user_id, name, phone, status)
        VALUES (?, ?, ?, ?, 'active')`,
       [t.id, t.userId, t.name, t.phone]
     );
@@ -315,8 +325,9 @@ export function seedDatabase() {
   ];
 
   for (const h of halaqahs) {
+    if (tombstones.has(h.id)) continue;
     run(
-      `INSERT INTO halaqah (id, name, teacher_id, schedule, location, academic_year, status)
+      `INSERT OR IGNORE INTO halaqah (id, name, teacher_id, schedule, location, academic_year, status)
        VALUES (?, ?, ?, ?, ?, '2025/2026', 'active')`,
       [h.id, h.name, h.teacherId, h.sched, h.loc]
     );
@@ -337,8 +348,9 @@ export function seedDatabase() {
   ];
 
   for (const v of violations) {
+    if (tombstones.has(v.id)) continue;
     run(
-      `INSERT INTO violations (id, code, name, category, description, default_points, status)
+      `INSERT OR IGNORE INTO violations (id, code, name, category, description, default_points, status)
        VALUES (?, ?, ?, ?, ?, ?, 'active')`,
       [v.id, v.code, v.name, v.cat, v.desc, v.points]
     );
@@ -359,8 +371,9 @@ export function seedDatabase() {
   ];
 
   for (const s of students) {
+    if (tombstones.has(s.id)) continue;
     run(
-      `INSERT INTO students (id, student_number, name, class, gender, halaqah_id, academic_year, status)
+      `INSERT OR IGNORE INTO students (id, student_number, name, class, gender, halaqah_id, academic_year, status)
        VALUES (?, ?, ?, ?, ?, ?, '2025/2026', 'active')`,
       [s.id, s.nis, s.name, s.class, s.gender, s.halaqahId]
     );
@@ -368,7 +381,7 @@ export function seedDatabase() {
     // Initial history
     const hInfo = halaqahs.find(h => h.id === s.halaqahId);
     run(
-      `INSERT INTO student_halaqah_history (id, student_id, halaqah_id, teacher_id, academic_year, class, start_date)
+      `INSERT OR IGNORE INTO student_halaqah_history (id, student_id, halaqah_id, teacher_id, academic_year, class, start_date)
        VALUES (?, ?, ?, ?, '2025/2026', ?, '2025-07-15')`,
       ['hist_' + s.id, s.id, s.halaqahId, hInfo?.teacherId || null, s.class]
     );
@@ -476,8 +489,9 @@ export function seedDatabase() {
   ];
 
   for (const r of sampleRecords) {
+    if (tombstones.has(r.id) || tombstones.has(r.studentId)) continue;
     run(
-      `INSERT INTO violation_records (
+      `INSERT OR IGNORE INTO violation_records (
         id, student_id, halaqah_id, teacher_id, violation_id,
         violation_name_snapshot, points_snapshot, halaqah_name_snapshot,
         teacher_name_snapshot, student_class_snapshot, academic_year_snapshot,

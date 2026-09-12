@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query, get, run, logAudit, persistDb } from '../db/database';
+import { query, get, run, logAudit, persistDb, addTombstone } from '../db/database';
 
 const router = Router();
 
@@ -416,6 +416,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     run('DELETE FROM violation_records WHERE student_id = ?', [targetId]);
     run('DELETE FROM positive_records WHERE student_id = ?', [targetId]);
     run('DELETE FROM students WHERE id = ?', [targetId]);
+    addTombstone(targetId, 'student');
 
     // Ensure database changes are flushed immediately to disk
     persistDb();
@@ -457,6 +458,7 @@ router.post('/bulk-delete', (req: Request, res: Response) => {
       run('DELETE FROM violation_records WHERE student_id = ?', [student.id]);
       run('DELETE FROM positive_records WHERE student_id = ?', [student.id]);
       run('DELETE FROM students WHERE id = ?', [student.id]);
+      addTombstone(student.id, 'student');
       logAudit({
         userName: actorName,
         action: 'BULK_DELETE_STUDENT',

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query, get, run, logAudit, persistDb } from '../db/database';
+import { query, get, run, logAudit, persistDb, addTombstone } from '../db/database';
 
 const router = Router();
 
@@ -243,6 +243,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     }
 
     run('DELETE FROM positive_records WHERE id = ?', [id]);
+    addTombstone(id, 'positive_record');
     persistDb();
 
     logAudit({
@@ -277,6 +278,7 @@ router.post('/bulk-delete', (req: Request, res: Response) => {
         continue;
       }
       run('DELETE FROM positive_records WHERE id = ?', [id]);
+      addTombstone(id, 'positive_record');
       logAudit({
         userName: actorName,
         action: 'BULK_DELETE_POSITIVE_RECORD',

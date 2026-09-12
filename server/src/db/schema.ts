@@ -173,4 +173,10 @@ CREATE TABLE IF NOT EXISTS positive_records (
   FOREIGN KEY (halaqah_id) REFERENCES halaqah(id) ON DELETE SET NULL,
   FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS tombstones (
+  id TEXT PRIMARY KEY,
+  entity_type TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 `;

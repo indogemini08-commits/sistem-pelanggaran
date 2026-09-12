@@ -120,6 +120,10 @@ export const storageSync = {
     const map = this.getUpdatedStudents();
     map[id] = { ...(map[id] || {}), ...updates };
     safeSetItem(KEYS.UPDATED_STUDENTS, map);
+
+    const created = this.getCreatedStudents().map((s) => (s.id === id ? { ...s, ...updates } : s));
+    safeSetItem(KEYS.CREATED_STUDENTS, created);
+
     this.notifyDataChange({ action: 'update', resource: 'student', id });
   },
 
@@ -407,6 +411,7 @@ export const storageSync = {
   getPendingDelta() {
     const createdStudents = this.getCreatedStudents();
     const deletedStudentIds = Array.from(this.getDeletedStudentIds());
+    const updatedStudents = this.getUpdatedStudents();
     const createdRecords = this.getCreatedRecords();
     const deletedRecordIds = Array.from(this.getDeletedRecordIds());
     const cancelledRecords = this.getCancelledRecords();
@@ -415,14 +420,19 @@ export const storageSync = {
     const cancelledPosRecords = this.getCancelledPosRecords();
     const createdHalaqahs = this.getCreatedHalaqahs();
     const deletedHalaqahIds = Array.from(this.getDeletedHalaqahIds());
+    const updatedHalaqahs = this.getUpdatedHalaqahs();
     const createdTeachers = this.getCreatedTeachers();
     const deletedTeacherIds = Array.from(this.getDeletedTeacherIds());
+    const updatedTeachers = this.getUpdatedTeachers();
     const createdUsers = this.getCreatedUsers();
     const deletedUserIds = Array.from(this.getDeletedUserIds());
+    const updatedUsers = this.getUpdatedUsers();
+    const deletedViolationIds = Array.from(this.getDeletedViolationIds());
 
     const hasPending =
       createdStudents.length > 0 ||
       deletedStudentIds.length > 0 ||
+      Object.keys(updatedStudents).length > 0 ||
       createdRecords.length > 0 ||
       deletedRecordIds.length > 0 ||
       Object.keys(cancelledRecords).length > 0 ||
@@ -431,16 +441,21 @@ export const storageSync = {
       Object.keys(cancelledPosRecords).length > 0 ||
       createdHalaqahs.length > 0 ||
       deletedHalaqahIds.length > 0 ||
+      Object.keys(updatedHalaqahs).length > 0 ||
       createdTeachers.length > 0 ||
       deletedTeacherIds.length > 0 ||
+      Object.keys(updatedTeachers).length > 0 ||
       createdUsers.length > 0 ||
-      deletedUserIds.length > 0;
+      deletedUserIds.length > 0 ||
+      Object.keys(updatedUsers).length > 0 ||
+      deletedViolationIds.length > 0;
 
     return {
       hasPending,
       delta: {
         createdStudents,
         deletedStudentIds,
+        updatedStudents,
         createdRecords,
         deletedRecordIds,
         cancelledRecords,
@@ -449,29 +464,96 @@ export const storageSync = {
         cancelledPosRecords,
         createdHalaqahs,
         deletedHalaqahIds,
+        updatedHalaqahs,
         createdTeachers,
         deletedTeacherIds,
+        updatedTeachers,
         createdUsers,
         deletedUserIds,
+        updatedUsers,
+        deletedViolationIds,
       },
     };
   },
 
+  absorbServerTombstones(tombstones?: Array<{ id: string; entity_type?: string }>) {
+    if (!Array.isArray(tombstones) || tombstones.length === 0) return;
+
+    let changed = false;
+    for (const t of tombstones) {
+      if (!t || !t.id) continue;
+      const type = t.entity_type;
+      if (type === 'student') {
+        const set = this.getDeletedStudentIds();
+        if (!set.has(t.id)) {
+          set.add(t.id);
+          safeSetItem(KEYS.DELETED_STUDENTS, Array.from(set));
+          const created = this.getCreatedStudents().filter((s) => s.id !== t.id);
+          safeSetItem(KEYS.CREATED_STUDENTS, created);
+          changed = true;
+        }
+      } else if (type === 'halaqah') {
+        const set = this.getDeletedHalaqahIds();
+        if (!set.has(t.id)) {
+          set.add(t.id);
+          safeSetItem(KEYS.DELETED_HALAQAHS, Array.from(set));
+          const created = this.getCreatedHalaqahs().filter((h) => h.id !== t.id);
+          safeSetItem(KEYS.CREATED_HALAQAHS, created);
+          changed = true;
+        }
+      } else if (type === 'teacher') {
+        const set = this.getDeletedTeacherIds();
+        if (!set.has(t.id)) {
+          set.add(t.id);
+          safeSetItem(KEYS.DELETED_TEACHERS, Array.from(set));
+          const created = this.getCreatedTeachers().filter((tc) => tc.id !== t.id);
+          safeSetItem(KEYS.CREATED_TEACHERS, created);
+          changed = true;
+        }
+      } else if (type === 'record') {
+        const set = this.getDeletedRecordIds();
+        if (!set.has(t.id)) {
+          set.add(t.id);
+          safeSetItem(KEYS.DELETED_RECORDS, Array.from(set));
+          const created = this.getCreatedRecords().filter((r) => r.id !== t.id);
+          safeSetItem(KEYS.CREATED_RECORDS, created);
+          changed = true;
+        }
+      } else if (type === 'positive_record') {
+        const set = this.getDeletedPosRecordIds();
+        if (!set.has(t.id)) {
+          set.add(t.id);
+          safeSetItem(KEYS.DELETED_POS_RECORDS, Array.from(set));
+          const created = this.getCreatedPosRecords().filter((pr) => pr.id !== t.id);
+          safeSetItem(KEYS.CREATED_POS_RECORDS, created);
+          changed = true;
+        }
+      } else if (type === 'user') {
+        const set = this.getDeletedUserIds();
+        if (!set.has(t.id)) {
+          set.add(t.id);
+          safeSetItem(KEYS.DELETED_USERS, Array.from(set));
+          const created = this.getCreatedUsers().filter((u) => u.id !== t.id);
+          safeSetItem(KEYS.CREATED_USERS, created);
+          changed = true;
+        }
+      } else if (type === 'violation') {
+        const set = this.getDeletedViolationIds();
+        if (!set.has(t.id)) {
+          set.add(t.id);
+          safeSetItem(KEYS.DELETED_VIOLATIONS, Array.from(set));
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      this.notifyDataChange({ action: 'tombstones_absorbed', resource: 'all' });
+    }
+  },
+
   clearPendingDelta() {
-    safeSetItem(KEYS.CREATED_STUDENTS, []);
-    safeSetItem(KEYS.DELETED_STUDENTS, []);
-    safeSetItem(KEYS.CREATED_RECORDS, []);
-    safeSetItem(KEYS.DELETED_RECORDS, []);
-    safeSetItem(KEYS.CANCELLED_RECORDS, {});
-    safeSetItem(KEYS.CREATED_POS_RECORDS, []);
-    safeSetItem(KEYS.DELETED_POS_RECORDS, []);
-    safeSetItem(KEYS.CANCELLED_POS_RECORDS, {});
-    safeSetItem(KEYS.CREATED_HALAQAHS, []);
-    safeSetItem(KEYS.DELETED_HALAQAHS, []);
-    safeSetItem(KEYS.CREATED_TEACHERS, []);
-    safeSetItem(KEYS.DELETED_TEACHERS, []);
-    safeSetItem(KEYS.CREATED_USERS, []);
-    safeSetItem(KEYS.DELETED_USERS, []);
+    // In our robust local-first architecture, tombstones and locally created items
+    // are permanently preserved in localStorage to prevent Vercel serverless cold-boot data loss.
   },
 
   async syncWithServer(): Promise<{ success: boolean; cloud?: any; state?: any; offline?: boolean }> {
@@ -488,9 +570,11 @@ export const storageSync = {
         });
         if (res.ok) {
           const json = await res.json();
-          this.clearPendingDelta();
           if (json.state) {
             this.saveCachedServerState(json.state);
+            if (Array.isArray(json.state.tombstones)) {
+              this.absorbServerTombstones(json.state.tombstones);
+            }
           }
           this.notifyDataChange({ action: 'sync_completed', resource: 'all' });
           return { success: true, cloud: json.cloud, state: json.state };
@@ -503,6 +587,9 @@ export const storageSync = {
         const json = await res.json();
         if (json.state) {
           this.saveCachedServerState(json.state);
+          if (Array.isArray(json.state.tombstones)) {
+            this.absorbServerTombstones(json.state.tombstones);
+          }
         }
         return { success: true, cloud: json.cloud, state: json.state };
       }

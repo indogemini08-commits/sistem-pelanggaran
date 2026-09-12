@@ -181,6 +181,12 @@ CREATE TABLE IF NOT EXISTS positive_records (
   FOREIGN KEY (halaqah_id) REFERENCES halaqah(id) ON DELETE SET NULL,
   FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS tombstones (
+  id TEXT PRIMARY KEY,
+  entity_type TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 // server/src/db/cloudStorage.ts
@@ -462,8 +468,35 @@ function runMigrations(database) {
     database.run("DELETE FROM violation_records WHERE student_id NOT IN (SELECT id FROM students);");
     database.run("DELETE FROM positive_records WHERE student_id NOT IN (SELECT id FROM students);");
     database.run("DELETE FROM student_halaqah_history WHERE student_id NOT IN (SELECT id FROM students);");
+    database.run(`
+      CREATE TABLE IF NOT EXISTS tombstones (
+        id TEXT PRIMARY KEY,
+        entity_type TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
   } catch (e) {
     console.error("Peringatan pembuatan tabel positive_actions/positive_records:", e?.message || e);
+  }
+}
+function addTombstone(id, entityType) {
+  if (!db || !id) return;
+  try {
+    run(
+      "INSERT OR REPLACE INTO tombstones (id, entity_type, created_at) VALUES (?, ?, datetime('now', 'localtime'))",
+      [id, entityType]
+    );
+  } catch (e) {
+    console.warn("Gagal mencatat tombstone:", e);
+  }
+}
+function getTombstones() {
+  if (!db) return /* @__PURE__ */ new Set();
+  try {
+    const rows = query("SELECT id FROM tombstones");
+    return new Set(rows.map((r) => r.id));
+  } catch {
+    return /* @__PURE__ */ new Set();
   }
 }
 function exportDatabaseState() {
@@ -479,7 +512,8 @@ function exportDatabaseState() {
     "positive_actions",
     "positive_records",
     "school_settings",
-    "point_thresholds"
+    "point_thresholds",
+    "tombstones"
   ];
   const state = {
     version: 1,
@@ -507,7 +541,8 @@ function importDatabaseState(snapshot) {
     "violations",
     "violation_records",
     "positive_actions",
-    "positive_records"
+    "positive_records",
+    "tombstones"
   ];
   db.run("PRAGMA foreign_keys = OFF;");
   for (const t of tables) {
@@ -527,6 +562,19 @@ function importDatabaseState(snapshot) {
         console.warn(`Gagal mengimpor tabel ${t}:`, err);
       }
     }
+  }
+  try {
+    const tombstones = getTombstones();
+    if (tombstones.size > 0) {
+      db.run("DELETE FROM students WHERE id IN (SELECT id FROM tombstones);");
+      db.run("DELETE FROM halaqah WHERE id IN (SELECT id FROM tombstones);");
+      db.run("DELETE FROM teachers WHERE id IN (SELECT id FROM tombstones);");
+      db.run("DELETE FROM violation_records WHERE id IN (SELECT id FROM tombstones);");
+      db.run("DELETE FROM positive_records WHERE id IN (SELECT id FROM tombstones);");
+      db.run("DELETE FROM violations WHERE id IN (SELECT id FROM tombstones);");
+      db.run("DELETE FROM users WHERE id IN (SELECT id FROM tombstones) AND id != 'usr_admin_imbs';");
+    }
+  } catch (e) {
   }
   try {
     db.run("DELETE FROM violation_records WHERE student_id NOT IN (SELECT id FROM students);");
@@ -606,6 +654,7 @@ function seedStudentsIfEmpty() {
   }
   const studentCount = query("SELECT COUNT(*) as count FROM students")[0]?.count || 0;
   if (studentCount > 0) return;
+  const tombstones = getTombstones();
   console.log("Tabel santri kosong, menginisialisasi 10 santri awal...");
   const halaqahs = query("SELECT id, teacher_id FROM halaqah");
   const students = [
@@ -621,6 +670,7 @@ function seedStudentsIfEmpty() {
     { id: "std_010", nis: "2025010", name: "Usamah bin Zaid Akbar", class: "8A", gender: "L", halaqahId: "hlq_madinah" }
   ];
   for (const s of students) {
+    if (tombstones.has(s.id)) continue;
     run(
       `INSERT INTO students (id, student_number, name, class, gender, halaqah_id, academic_year, status)
        VALUES (?, ?, ?, ?, ?, ?, '2025/2026', 'active')`,
@@ -651,8 +701,10 @@ var DEFAULT_KESANTRIAN_VIOLATIONS = [
 function seedKesantrianViolationsIfEmpty() {
   const ksCount = query("SELECT COUNT(*) as count FROM violations WHERE division = 'kesantrian'")[0]?.count || 0;
   if (ksCount > 0) return;
+  const tombstones = getTombstones();
   console.log("Menginisialisasi master pelanggaran divisi kesantrian...");
   for (const v of DEFAULT_KESANTRIAN_VIOLATIONS) {
+    if (tombstones.has(v.id)) continue;
     run(
       `INSERT INTO violations (id, code, name, division, category, description, default_points, status)
        VALUES (?, ?, ?, 'kesantrian', ?, ?, ?, 'active')`,
@@ -705,6 +757,7 @@ function seedKesantrianViolationsIfEmpty() {
     }
   ];
   for (const r of sampleKsRecords) {
+    if (tombstones.has(r.id) || tombstones.has(r.studentId)) continue;
     const stdExists = query("SELECT id FROM students WHERE id = ?", [r.studentId]);
     if (stdExists.length === 0) continue;
     const exists = query("SELECT id FROM violation_records WHERE id = ?", [r.id]);
@@ -774,9 +827,11 @@ var DEFAULT_POSITIVE_ACTIONS = [
 ];
 function seedPositiveActionsIfEmpty() {
   const count = query("SELECT COUNT(*) as count FROM positive_actions")[0]?.count || 0;
+  const tombstones = getTombstones();
   if (count === 0) {
     console.log("Menginisialisasi master kegiatan baik (kebaikan & prestasi)...");
     for (const a of DEFAULT_POSITIVE_ACTIONS) {
+      if (tombstones.has(a.id)) continue;
       run(
         `INSERT INTO positive_actions (id, code, name, division, category, description, default_points_deduction, status)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`,
@@ -786,7 +841,7 @@ function seedPositiveActionsIfEmpty() {
   }
   const posCount = query("SELECT COUNT(*) as count FROM positive_records")[0]?.count || 0;
   const std002Exists = query("SELECT id FROM students WHERE id = 'std_002'")[0];
-  if (posCount === 0 && std002Exists) {
+  if (posCount === 0 && std002Exists && !tombstones.has("pos_rec_001") && !tombstones.has("std_002")) {
     const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
     run(
       `INSERT INTO positive_records (
@@ -828,8 +883,9 @@ function seedDatabase() {
     return;
   }
   console.log("Mengisi data awal database (seeding)...");
+  const tombstones = getTombstones();
   run(`
-    INSERT INTO school_settings (id, app_name, school_name, address, phone, email, logo_url, kop_surat_text, current_academic_year)
+    INSERT OR IGNORE INTO school_settings (id, app_name, school_name, address, phone, email, logo_url, kop_surat_text, current_academic_year)
     VALUES (
       'settings_default',
       'Sistem Poin Santri Halaqah',
@@ -851,7 +907,7 @@ function seedDatabase() {
   ];
   for (const th of thresholds) {
     run(
-      `INSERT INTO point_thresholds (id, minimum_points, maximum_points, status_name, badge_color, description, sort_order)
+      `INSERT OR IGNORE INTO point_thresholds (id, minimum_points, maximum_points, status_name, badge_color, description, sort_order)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [th.id, th.min, th.max, th.name, th.color, th.desc, th.order]
     );
@@ -865,8 +921,9 @@ function seedDatabase() {
     { id: "usr_abdullah", name: "Ustadz Abdullah Al-Hafizh", email: "abdullah@pesantren.id", pass: "abdullah123", role: "teacher" }
   ];
   for (const u of users) {
+    if (tombstones.has(u.id)) continue;
     run(
-      `INSERT INTO users (id, name, email, password_hash, role, status)
+      `INSERT OR IGNORE INTO users (id, name, email, password_hash, role, status)
        VALUES (?, ?, ?, ?, ?, 'active')`,
       [u.id, u.name, u.email, u.pass, u.role]
     );
@@ -877,8 +934,9 @@ function seedDatabase() {
     { id: "tch_abdullah", userId: "usr_abdullah", name: "Ustadz Abdullah Al-Hafizh", phone: "0812-3456-7803" }
   ];
   for (const t of teachers) {
+    if (tombstones.has(t.id)) continue;
     run(
-      `INSERT INTO teachers (id, user_id, name, phone, status)
+      `INSERT OR IGNORE INTO teachers (id, user_id, name, phone, status)
        VALUES (?, ?, ?, ?, 'active')`,
       [t.id, t.userId, t.name, t.phone]
     );
@@ -889,8 +947,9 @@ function seedDatabase() {
     { id: "hlq_madinah", name: "Halaqah Madinah", teacherId: "tch_abdullah", sched: "Ba'da Subuh & Ba'da Isya", loc: "Gazebo Barat" }
   ];
   for (const h of halaqahs) {
+    if (tombstones.has(h.id)) continue;
     run(
-      `INSERT INTO halaqah (id, name, teacher_id, schedule, location, academic_year, status)
+      `INSERT OR IGNORE INTO halaqah (id, name, teacher_id, schedule, location, academic_year, status)
        VALUES (?, ?, ?, ?, ?, '2025/2026', 'active')`,
       [h.id, h.name, h.teacherId, h.sched, h.loc]
     );
@@ -908,8 +967,9 @@ function seedDatabase() {
     { id: "v_010", code: "P010", name: "Membawa gawai / barang terlarang", cat: "Kedisiplinan", points: 20, desc: "Membawa HP atau gadget ke area halaqah tanpa izin" }
   ];
   for (const v of violations) {
+    if (tombstones.has(v.id)) continue;
     run(
-      `INSERT INTO violations (id, code, name, category, description, default_points, status)
+      `INSERT OR IGNORE INTO violations (id, code, name, category, description, default_points, status)
        VALUES (?, ?, ?, ?, ?, ?, 'active')`,
       [v.id, v.code, v.name, v.cat, v.desc, v.points]
     );
@@ -927,14 +987,15 @@ function seedDatabase() {
     { id: "std_010", nis: "2025010", name: "Usamah bin Zaid Akbar", class: "8A", gender: "L", halaqahId: "hlq_madinah" }
   ];
   for (const s of students) {
+    if (tombstones.has(s.id)) continue;
     run(
-      `INSERT INTO students (id, student_number, name, class, gender, halaqah_id, academic_year, status)
+      `INSERT OR IGNORE INTO students (id, student_number, name, class, gender, halaqah_id, academic_year, status)
        VALUES (?, ?, ?, ?, ?, ?, '2025/2026', 'active')`,
       [s.id, s.nis, s.name, s.class, s.gender, s.halaqahId]
     );
     const hInfo = halaqahs.find((h) => h.id === s.halaqahId);
     run(
-      `INSERT INTO student_halaqah_history (id, student_id, halaqah_id, teacher_id, academic_year, class, start_date)
+      `INSERT OR IGNORE INTO student_halaqah_history (id, student_id, halaqah_id, teacher_id, academic_year, class, start_date)
        VALUES (?, ?, ?, ?, '2025/2026', ?, '2025-07-15')`,
       ["hist_" + s.id, s.id, s.halaqahId, hInfo?.teacherId || null, s.class]
     );
@@ -1039,8 +1100,9 @@ function seedDatabase() {
     }
   ];
   for (const r of sampleRecords) {
+    if (tombstones.has(r.id) || tombstones.has(r.studentId)) continue;
     run(
-      `INSERT INTO violation_records (
+      `INSERT OR IGNORE INTO violation_records (
         id, student_id, halaqah_id, teacher_id, violation_id,
         violation_name_snapshot, points_snapshot, halaqah_name_snapshot,
         teacher_name_snapshot, student_class_snapshot, academic_year_snapshot,
@@ -1289,6 +1351,7 @@ router2.delete("/:id", (req, res) => {
     }
     run("UPDATE teachers SET user_id = NULL WHERE user_id = ?", [id]);
     run("DELETE FROM users WHERE id = ?", [id]);
+    addTombstone(id, "user");
     persistDb();
     logAudit({
       userName: actorName,
@@ -1401,6 +1464,7 @@ router3.delete("/:id", (req, res) => {
     run("UPDATE violation_records SET teacher_id = NULL WHERE teacher_id = ?", [id]);
     run("UPDATE positive_records SET teacher_id = NULL WHERE teacher_id = ?", [id]);
     run("DELETE FROM teachers WHERE id = ?", [id]);
+    addTombstone(id, "teacher");
     logAudit({
       userName: actorName,
       action: "DELETE_TEACHER",
@@ -1504,6 +1568,7 @@ router4.delete("/:id", (req, res) => {
     run("UPDATE positive_records SET halaqah_id = NULL WHERE halaqah_id = ?", [id]);
     run("DELETE FROM student_halaqah_history WHERE halaqah_id = ?", [id]);
     run("DELETE FROM halaqah WHERE id = ?", [id]);
+    addTombstone(id, "halaqah");
     logAudit({
       userName: actorName,
       action: "DELETE_HALAQAH",
@@ -1875,6 +1940,7 @@ router5.delete("/:id", (req, res) => {
     run("DELETE FROM violation_records WHERE student_id = ?", [targetId]);
     run("DELETE FROM positive_records WHERE student_id = ?", [targetId]);
     run("DELETE FROM students WHERE id = ?", [targetId]);
+    addTombstone(targetId, "student");
     persistDb();
     logAudit({
       userName: actorName,
@@ -1908,6 +1974,7 @@ router5.post("/bulk-delete", (req, res) => {
       run("DELETE FROM violation_records WHERE student_id = ?", [student.id]);
       run("DELETE FROM positive_records WHERE student_id = ?", [student.id]);
       run("DELETE FROM students WHERE id = ?", [student.id]);
+      addTombstone(student.id, "student");
       logAudit({
         userName: actorName,
         action: "BULK_DELETE_STUDENT",
@@ -2146,6 +2213,7 @@ router6.post("/bulk-delete", (req, res) => {
     }
     const deleted = [];
     for (const id of ids) {
+      addTombstone(id, "violation");
       const violation = get("SELECT * FROM violations WHERE id = ?", [id]);
       if (!violation) continue;
       run("UPDATE violation_records SET violation_id = NULL WHERE violation_id = ?", [id]);
@@ -2174,8 +2242,10 @@ router6.delete("/:id", (req, res) => {
   try {
     const { id } = req.params;
     const { actorName = "Admin" } = req.body || {};
+    addTombstone(id, "violation");
     const violation = get("SELECT * FROM violations WHERE id = ?", [id]);
     if (!violation) {
+      persistDb();
       return res.json({ message: "Pelanggaran sudah tidak ada atau telah dihapus" });
     }
     run("UPDATE violation_records SET violation_id = NULL WHERE violation_id = ?", [id]);
@@ -2495,6 +2565,7 @@ router7.delete("/:id", (req, res) => {
       return res.json({ success: true, message: "Catatan pelanggaran sudah tidak ada atau telah dihapus" });
     }
     run("DELETE FROM violation_records WHERE id = ?", [id]);
+    addTombstone(id, "record");
     persistDb();
     logAudit({
       userName: actorName,
@@ -2523,6 +2594,7 @@ router7.post("/bulk-delete", (req, res) => {
         continue;
       }
       run("DELETE FROM violation_records WHERE id = ?", [id]);
+      addTombstone(id, "record");
       logAudit({
         userName: actorName,
         action: "BULK_DELETE_VIOLATION_RECORD",
@@ -3157,6 +3229,7 @@ router11.delete("/:id", (req, res) => {
       return res.json({ success: true, message: "Catatan kebaikan sudah tidak ada atau telah dihapus" });
     }
     run("DELETE FROM positive_records WHERE id = ?", [id]);
+    addTombstone(id, "positive_record");
     persistDb();
     logAudit({
       userName: actorName,
@@ -3185,6 +3258,7 @@ router11.post("/bulk-delete", (req, res) => {
         continue;
       }
       run("DELETE FROM positive_records WHERE id = ?", [id]);
+      addTombstone(id, "positive_record");
       logAudit({
         userName: actorName,
         action: "BULK_DELETE_POSITIVE_RECORD",
@@ -3250,35 +3324,48 @@ router12.post("/state", async (req, res) => {
           run("DELETE FROM violation_records WHERE student_id = ?", [id]);
           run("DELETE FROM positive_records WHERE student_id = ?", [id]);
           run("DELETE FROM students WHERE id = ?", [id]);
+          addTombstone(id, "student");
         }
       }
       if (Array.isArray(delta.deletedRecordIds)) {
         for (const id of delta.deletedRecordIds) {
           run("DELETE FROM violation_records WHERE id = ?", [id]);
+          addTombstone(id, "record");
         }
       }
       if (Array.isArray(delta.deletedPosRecordIds)) {
         for (const id of delta.deletedPosRecordIds) {
           run("DELETE FROM positive_records WHERE id = ?", [id]);
+          addTombstone(id, "positive_record");
         }
       }
       if (Array.isArray(delta.deletedHalaqahIds)) {
         for (const id of delta.deletedHalaqahIds) {
           run("UPDATE students SET halaqah_id = NULL WHERE halaqah_id = ?", [id]);
           run("DELETE FROM halaqah WHERE id = ?", [id]);
+          addTombstone(id, "halaqah");
         }
       }
       if (Array.isArray(delta.deletedTeacherIds)) {
         for (const id of delta.deletedTeacherIds) {
           run("UPDATE halaqah SET teacher_id = NULL WHERE teacher_id = ?", [id]);
           run("DELETE FROM teachers WHERE id = ?", [id]);
+          addTombstone(id, "teacher");
         }
       }
       if (Array.isArray(delta.deletedUserIds)) {
         for (const id of delta.deletedUserIds) {
           if (id !== "usr_admin_imbs") {
             run("DELETE FROM users WHERE id = ?", [id]);
+            addTombstone(id, "user");
           }
+        }
+      }
+      if (Array.isArray(delta.deletedViolationIds)) {
+        for (const id of delta.deletedViolationIds) {
+          run("UPDATE violation_records SET violation_id = NULL WHERE violation_id = ?", [id]);
+          run("DELETE FROM violations WHERE id = ?", [id]);
+          addTombstone(id, "violation");
         }
       }
       if (Array.isArray(delta.createdStudents)) {
@@ -3405,6 +3492,18 @@ router12.post("/state", async (req, res) => {
           }
         }
       }
+      if (Array.isArray(delta.createdUsers)) {
+        for (const u of delta.createdUsers) {
+          const exists = get("SELECT id FROM users WHERE id = ? OR LOWER(email) = ?", [u.id, (u.email || "").toLowerCase()]);
+          if (!exists) {
+            run(
+              `INSERT INTO users (id, name, email, password_hash, role, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              [u.id, u.name, (u.email || "").toLowerCase(), u.password || "admin123", u.role || "teacher", u.status || "active", u.created_at || (/* @__PURE__ */ new Date()).toISOString()]
+            );
+          }
+        }
+      }
       if (delta.cancelledRecords && typeof delta.cancelledRecords === "object") {
         for (const [id, reason] of Object.entries(delta.cancelledRecords)) {
           run("UPDATE violation_records SET status = 'cancelled', cancellation_reason = ? WHERE id = ?", [reason, id]);
@@ -3413,6 +3512,57 @@ router12.post("/state", async (req, res) => {
       if (delta.cancelledPosRecords && typeof delta.cancelledPosRecords === "object") {
         for (const [id, reason] of Object.entries(delta.cancelledPosRecords)) {
           run("UPDATE positive_records SET status = 'cancelled', cancellation_reason = ? WHERE id = ?", [reason, id]);
+        }
+      }
+      if (delta.updatedStudents && typeof delta.updatedStudents === "object") {
+        for (const [id, up] of Object.entries(delta.updatedStudents)) {
+          run(
+            `UPDATE students SET
+              name = COALESCE(?, name),
+              student_number = COALESCE(?, student_number),
+              class = COALESCE(?, class),
+              halaqah_id = COALESCE(?, halaqah_id)
+             WHERE id = ?`,
+            [up.name || null, up.student_number || null, up.class || null, up.halaqah_id || null, id]
+          );
+        }
+      }
+      if (delta.updatedHalaqahs && typeof delta.updatedHalaqahs === "object") {
+        for (const [id, up] of Object.entries(delta.updatedHalaqahs)) {
+          run(
+            `UPDATE halaqah SET
+              name = COALESCE(?, name),
+              teacher_id = COALESCE(?, teacher_id),
+              schedule = COALESCE(?, schedule),
+              location = COALESCE(?, location)
+             WHERE id = ?`,
+            [up.name || null, up.teacher_id || null, up.schedule || null, up.location || null, id]
+          );
+        }
+      }
+      if (delta.updatedTeachers && typeof delta.updatedTeachers === "object") {
+        for (const [id, up] of Object.entries(delta.updatedTeachers)) {
+          run(
+            `UPDATE teachers SET
+              name = COALESCE(?, name),
+              phone = COALESCE(?, phone),
+              status = COALESCE(?, status)
+             WHERE id = ?`,
+            [up.name || null, up.phone || null, up.status || null, id]
+          );
+        }
+      }
+      if (delta.updatedUsers && typeof delta.updatedUsers === "object") {
+        for (const [id, up] of Object.entries(delta.updatedUsers)) {
+          run(
+            `UPDATE users SET
+              name = COALESCE(?, name),
+              email = COALESCE(?, email),
+              role = COALESCE(?, role),
+              status = COALESCE(?, status)
+             WHERE id = ?`,
+            [up.name || null, up.email || null, up.role || null, up.status || null, id]
+          );
         }
       }
       persistDb();

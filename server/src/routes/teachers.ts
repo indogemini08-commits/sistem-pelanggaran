@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query, get, run, logAudit, persistDb } from '../db/database';
+import { query, get, run, logAudit, persistDb, addTombstone } from '../db/database';
 
 const router = Router();
 
@@ -120,6 +120,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     run('UPDATE violation_records SET teacher_id = NULL WHERE teacher_id = ?', [id]);
     run('UPDATE positive_records SET teacher_id = NULL WHERE teacher_id = ?', [id]);
     run('DELETE FROM teachers WHERE id = ?', [id]);
+    addTombstone(id, 'teacher');
 
     logAudit({
       userName: actorName,

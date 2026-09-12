@@ -47,6 +47,13 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ currentUser }) => {
 
   useEffect(() => {
     loadTeachers();
+    const handleDataChanged = () => {
+      loadTeachers();
+    };
+    window.addEventListener('app:data-changed', handleDataChanged);
+    return () => {
+      window.removeEventListener('app:data-changed', handleDataChanged);
+    };
   }, []);
 
   const loadTeachers = async () => {

@@ -142,6 +142,15 @@ function runMigrations(database: Database) {
     database.run("DELETE FROM violation_records WHERE student_id NOT IN (SELECT id FROM students);");
     database.run("DELETE FROM positive_records WHERE student_id NOT IN (SELECT id FROM students);");
     database.run("DELETE FROM student_halaqah_history WHERE student_id NOT IN (SELECT id FROM students);");
+
+    // Ensure tombstones table exists
+    database.run(`
+      CREATE TABLE IF NOT EXISTS tombstones (
+        id TEXT PRIMARY KEY,
+        entity_type TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
   } catch (e: any) {
     console.error('Peringatan pembuatan tabel positive_actions/positive_records:', e?.message || e);
   }
@@ -163,6 +172,29 @@ export interface DatabaseSnapshot {
   positive_records: any[];
   school_settings: any[];
   point_thresholds: any[];
+  tombstones?: any[];
+}
+
+export function addTombstone(id: string, entityType: string) {
+  if (!db || !id) return;
+  try {
+    run(
+      "INSERT OR REPLACE INTO tombstones (id, entity_type, created_at) VALUES (?, ?, datetime('now', 'localtime'))",
+      [id, entityType]
+    );
+  } catch (e) {
+    console.warn('Gagal mencatat tombstone:', e);
+  }
+}
+
+export function getTombstones(): Set<string> {
+  if (!db) return new Set();
+  try {
+    const rows = query<{ id: string }>('SELECT id FROM tombstones');
+    return new Set(rows.map((r) => r.id));
+  } catch {
+    return new Set();
+  }
 }
 
 export function exportDatabaseState(): DatabaseSnapshot {
@@ -179,6 +211,7 @@ export function exportDatabaseState(): DatabaseSnapshot {
     'positive_records',
     'school_settings',
     'point_thresholds',
+    'tombstones',
   ];
   const state: any = {
     version: 1,
@@ -208,6 +241,7 @@ export function importDatabaseState(snapshot: Partial<DatabaseSnapshot>): void {
     'violation_records',
     'positive_actions',
     'positive_records',
+    'tombstones',
   ];
 
   db.run('PRAGMA foreign_keys = OFF;');
@@ -230,6 +264,20 @@ export function importDatabaseState(snapshot: Partial<DatabaseSnapshot>): void {
       }
     }
   }
+
+  // Enforce tombstones: permanently purge any resurrected items matching tombstones
+  try {
+    const tombstones = getTombstones();
+    if (tombstones.size > 0) {
+      db.run("DELETE FROM students WHERE id IN (SELECT id FROM tombstones);");
+      db.run("DELETE FROM halaqah WHERE id IN (SELECT id FROM tombstones);");
+      db.run("DELETE FROM teachers WHERE id IN (SELECT id FROM tombstones);");
+      db.run("DELETE FROM violation_records WHERE id IN (SELECT id FROM tombstones);");
+      db.run("DELETE FROM positive_records WHERE id IN (SELECT id FROM tombstones);");
+      db.run("DELETE FROM violations WHERE id IN (SELECT id FROM tombstones);");
+      db.run("DELETE FROM users WHERE id IN (SELECT id FROM tombstones) AND id != 'usr_admin_imbs';");
+    }
+  } catch (e) {}
 
   // Cleanup orphaned records
   try {
