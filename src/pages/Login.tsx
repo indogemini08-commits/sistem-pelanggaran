@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import { User as UserType, SchoolSettings } from '../types';
+import { ThemeToggle } from '../components/ThemeToggle';
 
 interface LoginProps {
   onLoginSuccess: (user: UserType) => void;
@@ -69,6 +70,11 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, settings, onOpenPa
 
   return (
     <div className="min-h-screen bg-navy-950 flex flex-col justify-center relative overflow-hidden font-sans select-none sm:select-auto">
+      {/* Floating Dark/Light Mode Switcher */}
+      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-30 flex items-center gap-2">
+        <ThemeToggle size="md" showLabel={false} />
+      </div>
+
       {/* Dynamic Background Mesh & Ambient Glows */}
       <div className="absolute inset-0 bg-islamic-pattern opacity-40 pointer-events-none" />
       <div className="absolute -top-40 -left-40 w-[32rem] h-[32rem] bg-brand-600/25 rounded-full blur-[128px] pointer-events-none animate-pulse-glow" />
@@ -113,20 +119,20 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, settings, onOpenPa
             </div>
 
             {/* Hadith & Arabic Calligraphy Card */}
-            <div className="glass-card-dark rounded-2xl p-5 border border-white/10 shadow-xl relative overflow-hidden">
-              <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-gold-500/5 rounded-full blur-2xl pointer-events-none" />
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-xl bg-gold-500/10 border border-gold-500/20 text-gold-400 shrink-0 mt-0.5">
+            <div className="glass-card-dark rounded-2xl p-5 sm:p-6 border border-white/15 shadow-2xl relative overflow-hidden">
+              <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-gold-500/10 rounded-full blur-2xl pointer-events-none" />
+              <div className="flex items-start gap-3.5">
+                <div className="p-2.5 rounded-xl bg-gold-500/15 border border-gold-500/30 text-gold-400 shrink-0 mt-0.5 shadow-sm">
                   <BookOpen className="w-5 h-5" />
                 </div>
-                <div className="space-y-1.5">
-                  <p className="font-arabic text-xl sm:text-2xl text-gold-300 font-bold leading-relaxed text-right dir-rtl">
+                <div className="space-y-2 flex-1">
+                  <p className="font-arabic text-2xl sm:text-3xl text-white font-black tracking-wide leading-relaxed text-right dir-rtl drop-shadow-md select-text">
                     « إِنَّمَا بُعِثْتُ لِأُتَمِّمَ مَكَارِمَ الْأَخْلَاقِ »
                   </p>
-                  <p className="text-xs sm:text-sm text-slate-300 italic">
+                  <p className="text-xs sm:text-sm text-slate-100 font-medium italic select-text">
                     "Sesungguhnya aku diutus untuk menyempurnakan kemuliaan akhlak."
                   </p>
-                  <p className="text-[11px] text-slate-400 font-semibold tracking-wider uppercase">
+                  <p className="text-[11px] text-amber-300 font-bold tracking-wider uppercase select-text">
                     HR. Ahmad & Al-Bukhari (Adabul Mufrad)
                   </p>
                 </div>
@@ -216,47 +222,50 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, settings, onOpenPa
               <div className="absolute -inset-1.5 bg-gradient-to-r from-brand-500 via-navy-600 to-gold-500/30 rounded-3xl blur-md opacity-40" />
 
               {/* Main Card Container */}
-              <div className="relative bg-white/95 backdrop-blur-2xl rounded-3xl p-6 sm:p-9 shadow-2xl border border-white/50 text-slate-900">
+              <div className="relative bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-3xl p-6 sm:p-9 shadow-2xl border border-white/50 dark:border-slate-800 text-slate-900 dark:text-white transition-colors duration-300">
                 
                 {/* Header within Card */}
                 <div className="mb-6">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-50 border border-brand-200/60 text-[11px] font-bold text-brand-700 uppercase tracking-wider">
-                      <span className="w-1.5 h-1.5 rounded-full bg-brand-600" />
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-50 dark:bg-brand-950/60 border border-brand-200/60 dark:border-brand-800/60 text-[11px] font-bold text-brand-700 dark:text-brand-300 uppercase tracking-wider">
+                      <span className="w-1.5 h-1.5 rounded-full bg-brand-600 dark:bg-brand-400" />
                       Portal Pengurus & Guru
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowHelpModal(true)}
-                      className="text-xs font-semibold text-slate-500 hover:text-brand-600 flex items-center gap-1 transition-colors cursor-pointer"
-                      title="Bantuan Masuk"
-                    >
-                      <HelpCircle className="w-3.5 h-3.5" />
-                      <span>Bantuan</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <ThemeToggle size="sm" />
+                      <button
+                        type="button"
+                        onClick={() => setShowHelpModal(true)}
+                        className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Bantuan Masuk"
+                      >
+                        <HelpCircle className="w-3.5 h-3.5" />
+                        <span>Bantuan</span>
+                      </button>
+                    </div>
                   </div>
 
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+                  <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                     Masuk ke Sistem
                   </h2>
-                  <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">
+                  <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 font-medium">
                     Silakan masukkan email resmi dan kata sandi akun Anda.
                   </p>
                 </div>
 
                 {/* Mode Switcher / Banner to Parent Portal */}
                 {onOpenParentPortal && (
-                  <div className="mb-5 p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50/60 border border-emerald-200 shadow-sm flex items-center justify-between gap-2.5">
+                  <div className="mb-5 p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50/60 dark:from-emerald-950/40 dark:via-teal-950/30 dark:to-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 shadow-sm flex items-center justify-between gap-2.5">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-700/20">
                         <GraduationCap className="w-5 h-5" />
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <p className="text-xs font-black text-emerald-950">Portal Wali Santri</p>
-                          <span className="px-1.5 py-0.5 bg-emerald-200/80 text-emerald-800 text-[9px] font-bold rounded-md">Tanpa Password</span>
+                          <p className="text-xs font-black text-emerald-950 dark:text-emerald-200">Portal Wali Santri</p>
+                          <span className="px-1.5 py-0.5 bg-emerald-200/80 dark:bg-emerald-800/80 text-emerald-800 dark:text-emerald-200 text-[9px] font-bold rounded-md">Tanpa Password</span>
                         </div>
-                        <p className="text-[11px] text-emerald-700 truncate mt-0.5">Cek kedisiplinan & poin cukup masukkan NIS</p>
+                        <p className="text-[11px] text-emerald-700 dark:text-emerald-300/80 truncate mt-0.5">Cek kedisiplinan & poin cukup masukkan NIS</p>
                       </div>
                     </div>
                     <button
@@ -272,8 +281,8 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, settings, onOpenPa
 
                 {/* Error Banner */}
                 {errorMsg && (
-                  <div className="mb-5 p-3.5 bg-rose-50 border border-rose-200/80 rounded-xl flex items-start gap-2.5 text-rose-800 text-xs sm:text-sm animate-scale-in">
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="mb-5 p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-800/60 rounded-xl flex items-start gap-2.5 text-rose-800 dark:text-rose-200 text-xs sm:text-sm animate-scale-in">
+                    <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                     <div className="flex-1 font-medium">{errorMsg}</div>
                     <button
                       type="button"
@@ -290,11 +299,11 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, settings, onOpenPa
                   
                   {/* Email Input */}
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
                       Email / Nama Pengguna
                     </label>
                     <div className="relative rounded-xl">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 dark:text-slate-500">
                         <Mail className="w-4 h-4" />
                       </div>
                       <input
@@ -302,10 +311,10 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, settings, onOpenPa
                         inputMode="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="contoh: imbs@aldri atau email pengguna"
+                        placeholder="Masukan Username atau Email"
                         required
                         autoComplete="username"
-                        className="block w-full pl-10 pr-4 py-3 text-sm bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder:text-slate-400 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all shadow-sm"
+                        className="block w-full pl-10 pr-4 py-3 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-medium focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all shadow-sm"
                       />
                     </div>
                   </div>

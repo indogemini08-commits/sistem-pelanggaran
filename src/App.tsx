@@ -140,7 +140,7 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#091122] text-slate-900 dark:text-slate-100 flex transition-colors duration-200">
       {/* Sidebar for Desktop (Fixed full height) & Mobile Drawer */}
       <Sidebar
         currentTab={currentTab}
@@ -291,11 +291,11 @@ export function App() {
         </main>
 
         {/* Clean Subtle Footer */}
-        <footer className="py-4 px-6 sm:px-8 border-t border-slate-200/80 bg-white/70 text-xs text-slate-500 hidden sm:flex items-center justify-between">
-          <p className="font-medium text-slate-700">
+        <footer className="py-4 px-6 sm:px-8 border-t border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-[#0c162b]/80 text-xs text-slate-500 dark:text-slate-400 hidden sm:flex items-center justify-between transition-colors duration-200">
+          <p className="font-medium text-slate-700 dark:text-slate-300">
             {settings?.school_name || "Pesantren Tahfizh Al-Qur'an"} • {settings?.app_name || "Sistem Poin Santri"}
           </p>
-          <p className="text-slate-400 font-medium">
+          <p className="text-slate-400 dark:text-slate-500 font-medium">
             Tahun Ajaran {settings?.current_academic_year || "2025/2026"} • Sistem Kedisiplinan Terpadu (Tahfizh & Kesantrian)
           </p>
         </footer>

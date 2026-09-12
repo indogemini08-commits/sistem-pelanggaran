@@ -441,7 +441,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
                       autoComplete="username"
                       value={formEmail}
                       onChange={(e) => setFormEmail(e.target.value)}
-                      placeholder="imbs@aldri atau nama@pesantren.id"
+                      placeholder="contoh: ustadz@pesantren.id atau username"
                       className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 bg-slate-50/50 hover:bg-white focus:bg-white font-medium transition-all"
                       required
                     />

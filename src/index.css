@@ -4,7 +4,10 @@
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 min-h-screen antialiased;
+    @apply bg-slate-50 text-slate-900 min-h-screen antialiased transition-colors duration-200;
+  }
+  .dark body {
+    @apply bg-[#091122] text-slate-100;
   }
 }
 
@@ -22,6 +25,13 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }
 
 /* Universal Responsive Modal Utilities */
@@ -198,4 +208,115 @@
     color: black !important;
   }
 }
+
+/* Animations for Theme Toggle */
+@keyframes spinSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.animate-spin-slow {
+  animation: spinSlow 14s linear infinite;
+}
+
+/* Dark Mode Harmonization */
+.dark .modal-card-adaptive {
+  background-color: #111d33;
+  border-color: #1e3152;
+  color: #f8fafc;
+}
+
+.dark .bg-white {
+  background-color: #111d33;
+  color: #f8fafc;
+}
+
+.dark .bg-slate-50 {
+  background-color: #091122;
+}
+
+.dark .bg-slate-100 {
+  background-color: #15223c;
+}
+
+.dark .bg-slate-200 {
+  background-color: #1e3052;
+}
+
+.dark .border-slate-200 {
+  border-color: #1e3152;
+}
+
+.dark .border-slate-100 {
+  border-color: #182845;
+}
+
+.dark .border-slate-300 {
+  border-color: #273d63;
+}
+
+.dark .text-slate-900 {
+  color: #f8fafc;
+}
+
+.dark .text-slate-800 {
+  color: #f1f5f9;
+}
+
+.dark .text-slate-700 {
+  color: #cbd5e1;
+}
+
+.dark .text-slate-600 {
+  color: #94a3b8;
+}
+
+.dark .text-slate-500 {
+  color: #94a3b8;
+}
+
+.dark .hover\:bg-slate-50:hover {
+  background-color: #162440;
+}
+
+.dark .hover\:bg-slate-100:hover {
+  background-color: #1a2c4e;
+}
+
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.dark select,
+.dark textarea {
+  background-color: #132039;
+  border-color: #24395c;
+  color: #f8fafc;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #64748b;
+}
+
+.dark input:focus,
+.dark select:focus,
+.dark textarea:focus {
+  background-color: #172744;
+  border-color: #3b82f6;
+}
+
+.dark table thead {
+  background-color: #0e182d;
+}
+
+.dark tr:hover td {
+  background-color: #14223d;
+}
+
+.dark .shadow-soft,
+.dark .shadow-card {
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5), 0 2px 6px -1px rgba(0, 0, 0, 0.4);
+}
+
 

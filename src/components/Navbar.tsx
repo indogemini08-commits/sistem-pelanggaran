@@ -20,6 +20,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { User as UserType, SchoolSettings } from '../types';
+import { ThemeToggle } from './ThemeToggle';
 
 interface NavbarProps {
   currentUser: UserType | null;
@@ -203,8 +204,11 @@ export const Navbar: React.FC<NavbarProps> = ({
           <span className="sm:hidden font-extrabold">+ Pelanggaran</span>
         </button>
 
+        {/* Theme Toggle Switcher (Matahari - Bulan) */}
+        <ThemeToggle size="sm" />
+
         {/* User Meta & Logout */}
-        <div className="flex items-center gap-2 sm:gap-3 pl-2 sm:pl-3 border-l border-slate-200">
+        <div className="flex items-center gap-2 sm:gap-3 pl-2 sm:pl-3 border-l border-slate-200 dark:border-slate-800">
           <div className="text-right hidden sm:block">
             <p className="text-xs font-bold text-slate-900 truncate max-w-[150px]">
               {currentUser?.name || 'Pengguna'}
