@@ -65,7 +65,13 @@ export async function loadCloudSnapshot(): Promise<any | null> {
         if (rows[0].updated_at) {
           localSnapshotTimestamp = new Date(rows[0].updated_at).toISOString();
         }
-        return rows[0].data;
+        let snapshotData = rows[0].data;
+        if (typeof snapshotData === 'string') {
+          try {
+            snapshotData = JSON.parse(snapshotData);
+          } catch {}
+        }
+        return snapshotData;
       }
     } catch (err: any) {
       console.warn('[CloudStorage] Gagal memuat snapshot dari PostgreSQL / Neon:', err?.message || err);
@@ -133,8 +139,14 @@ export async function checkAndSyncCloudSnapshot(importCallback: (data: any) => v
       const remoteTime = new Date(rows[0].updated_at).toISOString();
       if (localSnapshotTimestamp && remoteTime !== localSnapshotTimestamp) {
         console.log(`[CloudStorage] Remote snapshot is newer (${remoteTime} vs ${localSnapshotTimestamp}), syncing container...`);
-        if (rows[0].data && (rows[0].data.version || rows[0].data.timestamp || Array.isArray(rows[0].data.users))) {
-          importCallback(rows[0].data);
+        let snapshotData = rows[0].data;
+        if (typeof snapshotData === 'string') {
+          try {
+            snapshotData = JSON.parse(snapshotData);
+          } catch {}
+        }
+        if (snapshotData && (snapshotData.version || snapshotData.timestamp || Array.isArray(snapshotData.users))) {
+          importCallback(snapshotData);
           localSnapshotTimestamp = remoteTime;
         }
       } else if (!localSnapshotTimestamp) {
@@ -150,6 +162,22 @@ export async function checkAndSyncCloudSnapshot(importCallback: (data: any) => v
 export async function saveCloudSnapshot(snapshot: any): Promise<boolean> {
   const providerInfo = getActiveCloudProvider();
   if (!providerInfo.isConnected) {
+    return false;
+  }
+
+  // Guard against saving an empty or unpopulated database
+  const hasContent =
+    snapshot &&
+    (
+      (Array.isArray(snapshot.users) && snapshot.users.length > 0) ||
+      (Array.isArray(snapshot.school_settings) && snapshot.school_settings.length > 0) ||
+      (Array.isArray(snapshot.point_thresholds) && snapshot.point_thresholds.length > 0) ||
+      (Array.isArray(snapshot.students) && snapshot.students.length > 0) ||
+      (Array.isArray(snapshot.violations) && snapshot.violations.length > 0)
+    );
+
+  if (!hasContent) {
+    console.warn('[CloudStorage] Diabaikan: upaya menyimpan snapshot database kosong ke cloud diblokir.');
     return false;
   }
 

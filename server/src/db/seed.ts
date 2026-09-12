@@ -518,6 +518,6 @@ export function seedDatabase() {
     newData: { status: 'Database berhasil diinisialisasi dengan data awal realistis' },
   });
 
-  persistDb();
-  console.log('Seeding selesai dan tersimpan ke cloud persistence!');
+  persistDb(false);
+  console.log('Seeding SQLite lokal selesai!');
 }

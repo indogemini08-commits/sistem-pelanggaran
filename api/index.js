@@ -239,7 +239,14 @@ async function loadCloudSnapshot() {
         if (rows[0].updated_at) {
           localSnapshotTimestamp = new Date(rows[0].updated_at).toISOString();
         }
-        return rows[0].data;
+        let snapshotData = rows[0].data;
+        if (typeof snapshotData === "string") {
+          try {
+            snapshotData = JSON.parse(snapshotData);
+          } catch {
+          }
+        }
+        return snapshotData;
       }
     } catch (err) {
       console.warn("[CloudStorage] Gagal memuat snapshot dari PostgreSQL / Neon:", err?.message || err);
@@ -298,8 +305,15 @@ async function checkAndSyncCloudSnapshot(importCallback) {
       const remoteTime = new Date(rows[0].updated_at).toISOString();
       if (localSnapshotTimestamp && remoteTime !== localSnapshotTimestamp) {
         console.log(`[CloudStorage] Remote snapshot is newer (${remoteTime} vs ${localSnapshotTimestamp}), syncing container...`);
-        if (rows[0].data && (rows[0].data.version || rows[0].data.timestamp || Array.isArray(rows[0].data.users))) {
-          importCallback(rows[0].data);
+        let snapshotData = rows[0].data;
+        if (typeof snapshotData === "string") {
+          try {
+            snapshotData = JSON.parse(snapshotData);
+          } catch {
+          }
+        }
+        if (snapshotData && (snapshotData.version || snapshotData.timestamp || Array.isArray(snapshotData.users))) {
+          importCallback(snapshotData);
           localSnapshotTimestamp = remoteTime;
         }
       } else if (!localSnapshotTimestamp) {
@@ -312,6 +326,11 @@ async function checkAndSyncCloudSnapshot(importCallback) {
 async function saveCloudSnapshot(snapshot) {
   const providerInfo = getActiveCloudProvider();
   if (!providerInfo.isConnected) {
+    return false;
+  }
+  const hasContent = snapshot && (Array.isArray(snapshot.users) && snapshot.users.length > 0 || Array.isArray(snapshot.school_settings) && snapshot.school_settings.length > 0 || Array.isArray(snapshot.point_thresholds) && snapshot.point_thresholds.length > 0 || Array.isArray(snapshot.students) && snapshot.students.length > 0 || Array.isArray(snapshot.violations) && snapshot.violations.length > 0);
+  if (!hasContent) {
+    console.warn("[CloudStorage] Diabaikan: upaya menyimpan snapshot database kosong ke cloud diblokir.");
     return false;
   }
   try {
@@ -396,7 +415,6 @@ async function getDb() {
       db = new SQL.Database(fileBuffer);
       db.run("PRAGMA foreign_keys = ON;");
       runMigrations(db);
-      persistDb();
       return db;
     } catch (err) {
       console.error("Gagal memuat file database yang ada, membuat baru:", err);
@@ -406,7 +424,6 @@ async function getDb() {
   db.run("PRAGMA foreign_keys = ON;");
   db.run(SCHEMA_SQL);
   runMigrations(db);
-  persistDb();
   return db;
 }
 function runMigrations(database) {
@@ -1158,8 +1175,8 @@ function seedDatabase() {
     tableName: "all",
     newData: { status: "Database berhasil diinisialisasi dengan data awal realistis" }
   });
-  persistDb();
-  console.log("Seeding selesai dan tersimpan ke cloud persistence!");
+  persistDb(false);
+  console.log("Seeding SQLite lokal selesai!");
 }
 
 // server/src/routes/auth.ts
@@ -3713,11 +3730,12 @@ async function ensureDbInitialized() {
       await getDb();
       try {
         const cloudSnapshot = await loadCloudSnapshot();
-        if (cloudSnapshot && (cloudSnapshot.version || cloudSnapshot.timestamp || Array.isArray(cloudSnapshot.users))) {
+        const hasData = cloudSnapshot && (Array.isArray(cloudSnapshot.users) && cloudSnapshot.users.length > 0 || Array.isArray(cloudSnapshot.school_settings) && cloudSnapshot.school_settings.length > 0 || Array.isArray(cloudSnapshot.point_thresholds) && cloudSnapshot.point_thresholds.length > 0 || Array.isArray(cloudSnapshot.students) && cloudSnapshot.students.length > 0 || Array.isArray(cloudSnapshot.violations) && cloudSnapshot.violations.length > 0);
+        if (hasData) {
           console.log("Memuat data dari Cloud Snapshot...");
           importDatabaseState(cloudSnapshot);
         } else {
-          console.log("Cloud snapshot belum ada, melakukan seeding awal...");
+          console.log("Cloud snapshot belum ada atau kosong, melakukan seeding awal...");
           seedDatabase();
           await persistDb();
         }

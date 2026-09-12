@@ -34,11 +34,21 @@ export async function ensureDbInitialized(): Promise<void> {
       // Check if a cloud snapshot exists in Postgres, Vercel KV, or Blob
       try {
         const cloudSnapshot = await loadCloudSnapshot();
-        if (cloudSnapshot && (cloudSnapshot.version || cloudSnapshot.timestamp || Array.isArray(cloudSnapshot.users))) {
+        const hasData =
+          cloudSnapshot &&
+          (
+            (Array.isArray(cloudSnapshot.users) && cloudSnapshot.users.length > 0) ||
+            (Array.isArray(cloudSnapshot.school_settings) && cloudSnapshot.school_settings.length > 0) ||
+            (Array.isArray(cloudSnapshot.point_thresholds) && cloudSnapshot.point_thresholds.length > 0) ||
+            (Array.isArray(cloudSnapshot.students) && cloudSnapshot.students.length > 0) ||
+            (Array.isArray(cloudSnapshot.violations) && cloudSnapshot.violations.length > 0)
+          );
+
+        if (hasData) {
           console.log('Memuat data dari Cloud Snapshot...');
           importDatabaseState(cloudSnapshot);
         } else {
-          console.log('Cloud snapshot belum ada, melakukan seeding awal...');
+          console.log('Cloud snapshot belum ada atau kosong, melakukan seeding awal...');
           seedDatabase();
           await persistDb();
         }

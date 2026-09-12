@@ -42,7 +42,6 @@ export async function getDb(): Promise<Database> {
       db = new SQL.Database(fileBuffer);
       db.run('PRAGMA foreign_keys = ON;');
       runMigrations(db);
-      persistDb();
       return db;
     } catch (err) {
       console.error('Gagal memuat file database yang ada, membuat baru:', err);
@@ -55,7 +54,6 @@ export async function getDb(): Promise<Database> {
   db.run(SCHEMA_SQL);
 
   runMigrations(db);
-  persistDb();
   return db;
 }
 
