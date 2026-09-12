@@ -18,6 +18,7 @@ import {
   Camera,
   Check,
   Award,
+  HeartHandshake,
 } from 'lucide-react';
 import { UserRole, SchoolSettings } from '../types';
 import { api } from '../services/api';
@@ -191,6 +192,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label: 'Rekap Terpadu (Semua)',
           icon: History,
           roles: ['admin', 'coordinator', 'kepala_kesantrian', 'teacher', 'guru'],
+        },
+        {
+          id: 'parent_portal',
+          label: 'Portal Wali (Pratinjau)',
+          icon: HeartHandshake,
+          roles: ['admin', 'coordinator', 'kepala_kesantrian', 'teacher', 'guru'],
+          badge: 'Cek NIS',
         },
       ],
     },

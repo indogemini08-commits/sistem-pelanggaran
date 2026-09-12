@@ -349,6 +349,46 @@ router.delete('/:id', (req: Request, res: Response) => {
   }
 });
 
+// POST bulk delete records (Admin only)
+router.post('/bulk-delete', (req: Request, res: Response) => {
+  try {
+    const { ids, actorName = 'Admin' } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'Daftar ID catatan wajib diisi' });
+    }
+
+    const deleted: string[] = [];
+    const skipped: string[] = [];
+
+    for (const id of ids) {
+      const record = get<any>('SELECT id FROM violation_records WHERE id = ?', [id]);
+      if (!record) {
+        skipped.push(id);
+        continue;
+      }
+      run('DELETE FROM violation_records WHERE id = ?', [id]);
+      logAudit({
+        userName: actorName,
+        action: 'BULK_DELETE_VIOLATION_RECORD',
+        tableName: 'violation_records',
+        recordId: id,
+      });
+      deleted.push(id);
+    }
+
+    persistDb();
+    return res.json({
+      success: true,
+      deletedCount: deleted.length,
+      skippedCount: skipped.length,
+      deletedIds: deleted,
+      message: `${deleted.length} catatan pelanggaran berhasil dihapus permanen`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Gagal menghapus catatan secara massal' });
+  }
+});
+
 // GET dashboard statistics & analytics
 router.get('/stats', (req: Request, res: Response) => {
   try {
@@ -384,12 +424,28 @@ router.get('/stats', (req: Request, res: Response) => {
     // Thresholds
     const thresholds = query<any>('SELECT * FROM point_thresholds ORDER BY sort_order ASC');
 
-    // Top 10 students with highest points (strictly active students)
-    const topStudents = query<any>(`
+    // Fetch positive deductions per student
+    const deductionsList = query<any>(`
+      SELECT student_id,
+             COALESCE(SUM(points_deducted), 0) as total_deducted,
+             COALESCE(SUM(CASE WHEN division = 'tahfizh' THEN points_deducted ELSE 0 END), 0) as tahfizh_deducted,
+             COALESCE(SUM(CASE WHEN division = 'kesantrian' THEN points_deducted ELSE 0 END), 0) as kesantrian_deducted
+      FROM positive_records
+      WHERE status = 'active'
+      GROUP BY student_id
+    `);
+
+    const deductionsMap = new Map<string, any>();
+    for (const d of deductionsList) {
+      deductionsMap.set(d.student_id, d);
+    }
+
+    // Students with violations (strictly active students)
+    const rawStudentPoints = query<any>(`
       SELECT s.id, s.name, s.student_number, s.class, h.name as halaqah_name,
-             COALESCE(SUM(vr.points_snapshot), 0) as total_points,
-             COALESCE(SUM(CASE WHEN vr.division = 'tahfizh' THEN vr.points_snapshot ELSE 0 END), 0) as tahfizh_points,
-             COALESCE(SUM(CASE WHEN vr.division = 'kesantrian' THEN vr.points_snapshot ELSE 0 END), 0) as kesantrian_points,
+             COALESCE(SUM(vr.points_snapshot), 0) as gross_total_points,
+             COALESCE(SUM(CASE WHEN vr.division = 'tahfizh' THEN vr.points_snapshot ELSE 0 END), 0) as gross_tahfizh_points,
+             COALESCE(SUM(CASE WHEN vr.division = 'kesantrian' THEN vr.points_snapshot ELSE 0 END), 0) as gross_kesantrian_points,
              COUNT(vr.id) as violation_count
       FROM students s
       LEFT JOIN halaqah h ON h.id = s.halaqah_id
@@ -397,9 +453,42 @@ router.get('/stats', (req: Request, res: Response) => {
       WHERE s.status = 'active'
       ${hasDivisionFilter ? `AND vr.division = '${division}'` : ''}
       GROUP BY s.id
-      ORDER BY total_points DESC
-      LIMIT 10
     `);
+
+    const enrichedStudents = rawStudentPoints.map((s: any) => {
+      const d = deductionsMap.get(s.id) || {};
+      const deductedTahfizh = Number(d.tahfizh_deducted || 0);
+      const deductedKesantrian = Number(d.kesantrian_deducted || 0);
+      const grossTahfizh = Number(s.gross_tahfizh_points || 0);
+      const grossKesantrian = Number(s.gross_kesantrian_points || 0);
+
+      const netTahfizh = Math.max(0, grossTahfizh - deductedTahfizh);
+      const netKesantrian = Math.max(0, grossKesantrian - deductedKesantrian);
+      const netTotal = hasDivisionFilter
+        ? (division === 'tahfizh' ? netTahfizh : netKesantrian)
+        : (netTahfizh + netKesantrian);
+
+      return {
+        id: s.id,
+        name: s.name,
+        student_number: s.student_number,
+        class: s.class,
+        halaqah_name: s.halaqah_name,
+        total_points: netTotal,
+        gross_points: Number(s.gross_total_points || 0),
+        tahfizh_points: netTahfizh,
+        kesantrian_points: netKesantrian,
+        tahfizh_deductions: deductedTahfizh,
+        kesantrian_deductions: deductedKesantrian,
+        total_deductions: deductedTahfizh + deductedKesantrian,
+        violation_count: s.violation_count,
+      };
+    });
+
+    // Top 10 students with highest points
+    const topStudents = [...enrichedStudents]
+      .sort((a, b) => b.total_points - a.total_points)
+      .slice(0, 10);
 
     // Violations by category
     const byCategory = query<any>(`
@@ -438,21 +527,10 @@ router.get('/stats', (req: Request, res: Response) => {
     `);
 
     // Santri needing attention (e.g. points >= 20)
-    const attentionThreshold = thresholds.find(t => t.minimum_points > 0)?.minimum_points || 20;
-    const studentsNeedingAttention = query<any>(`
-      SELECT s.id, s.name, s.student_number, s.class, h.name as halaqah_name,
-             COALESCE(SUM(vr.points_snapshot), 0) as total_points,
-             COALESCE(SUM(CASE WHEN vr.division = 'tahfizh' THEN vr.points_snapshot ELSE 0 END), 0) as tahfizh_points,
-             COALESCE(SUM(CASE WHEN vr.division = 'kesantrian' THEN vr.points_snapshot ELSE 0 END), 0) as kesantrian_points
-      FROM students s
-      LEFT JOIN halaqah h ON h.id = s.halaqah_id
-      JOIN violation_records vr ON vr.student_id = s.id AND vr.status = 'active'
-      WHERE s.status = 'active'
-      ${hasDivisionFilter ? `AND vr.division = '${division}'` : ''}
-      GROUP BY s.id
-      HAVING total_points >= ?
-      ORDER BY total_points DESC
-    `, [attentionThreshold]);
+    const attentionThreshold = thresholds.find((t: any) => t.minimum_points > 0)?.minimum_points || 20;
+    const studentsNeedingAttention = enrichedStudents
+      .filter((s: any) => s.total_points >= attentionThreshold)
+      .sort((a: any, b: any) => b.total_points - a.total_points);
 
     return res.json({
       summary: {

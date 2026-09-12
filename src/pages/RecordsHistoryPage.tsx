@@ -65,6 +65,11 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [deleteError, setDeleteError] = useState<string>('');
 
+  // Bulk select
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBulkConfirm, setShowBulkConfirm] = useState<boolean>(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
+
   useEffect(() => {
     setFilterDivision(initialDivision);
   }, [initialDivision]);
@@ -150,6 +155,7 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
     try {
       await api.records.delete(targetId, currentUser?.name || 'Admin');
       setRecords((prev) => prev.filter((r) => r.id !== targetId));
+      setSelectedIds((prev) => { const n = new Set(prev); n.delete(targetId); return n; });
       setRecordToDelete(null);
       storageSync.notifyDataChange({ action: 'delete', resource: 'record', id: targetId });
       await loadRecordsAndOptions();
@@ -159,6 +165,34 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  // Bulk delete records
+  const handleBulkDeleteRecords = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setIsBulkDeleting(true);
+    try {
+      await api.records.bulkDelete(ids, currentUser?.name || 'Admin');
+      setRecords((prev) => prev.filter((r) => !selectedIds.has(r.id)));
+      setSelectedIds(new Set());
+      setShowBulkConfirm(false);
+      storageSync.notifyDataChange({ action: 'delete', resource: 'record', id: ids[0] });
+      await loadRecordsAndOptions();
+    } catch (err: any) {
+      alert('Gagal menghapus: ' + err.message);
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  const toggleSelectRecord = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   // Filtering Logic
@@ -298,6 +332,17 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
+          {/* Bulk Delete button — visible when selections are active */}
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => setShowBulkConfirm(true)}
+              className="px-4 py-3 sm:py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-sm sm:text-xs font-bold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 min-h-[44px] sm:min-h-0 w-full sm:w-auto"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Hapus {selectedIds.size} Catatan</span>
+            </button>
+          )}
+
           <button
             onClick={handleExportPDF}
             className="px-4 py-3 sm:py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm sm:text-xs font-bold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 min-h-[44px] sm:min-h-0 w-full sm:w-auto"
@@ -511,21 +556,29 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
                   <div
                     key={r.id}
                     className={`p-3.5 space-y-2.5 transition-colors ${
-                      isCancelled ? 'bg-slate-50/60 opacity-60' : 'hover:bg-slate-50/70'
+                      isCancelled ? 'bg-slate-50/60 opacity-60' : selectedIds.has(r.id) ? 'bg-rose-50/50' : 'hover:bg-slate-50/70'
                     }`}
                   >
-                    {/* Top Row: Name, NIS, Division Badge */}
+                    {/* Top Row: Checkbox, Name, NIS, Division Badge */}
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <button
-                          onClick={() => onSelectStudent && onSelectStudent(r.student_id)}
-                          className="font-bold text-slate-900 text-sm text-left hover:text-brand-600 transition-colors truncate block"
-                        >
-                          {r.student_name}
-                        </button>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          NIS: {r.student_nis} • Kelas {r.student_class_snapshot}
-                        </p>
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(r.id)}
+                          onChange={() => toggleSelectRecord(r.id)}
+                          className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer shrink-0 mt-1"
+                        />
+                        <div className="min-w-0">
+                          <button
+                            onClick={() => onSelectStudent && onSelectStudent(r.student_id)}
+                            className="font-bold text-slate-900 text-sm text-left hover:text-brand-600 transition-colors truncate block"
+                          >
+                            {r.student_name}
+                          </button>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            NIS: {r.student_nis} • Kelas {r.student_class_snapshot}
+                          </p>
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -621,6 +674,21 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
               <table className="w-full text-left text-xs sm:text-sm">
                 <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold tracking-wider border-b border-slate-200">
                   <tr>
+                    <th className="px-4 py-3.5 text-center w-10">
+                      <input
+                        type="checkbox"
+                        checked={filteredRecords.length > 0 && filteredRecords.every((r) => selectedIds.has(r.id))}
+                        onChange={() => {
+                          if (filteredRecords.every((r) => selectedIds.has(r.id))) {
+                            setSelectedIds((prev) => { const n = new Set(prev); filteredRecords.forEach((r) => n.delete(r.id)); return n; });
+                          } else {
+                            setSelectedIds((prev) => { const n = new Set(prev); filteredRecords.forEach((r) => n.add(r.id)); return n; });
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                        title="Pilih semua"
+                      />
+                    </th>
                     <th className="px-4 py-3.5 text-center w-12">#</th>
                     <th className="px-4 py-3.5">Tanggal & Waktu</th>
                     <th className="px-4 py-3.5">Divisi</th>
@@ -641,9 +709,17 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
                       <tr
                         key={r.id}
                         className={`hover:bg-slate-50/70 transition-colors ${
-                          isCancelled ? 'bg-slate-50/60 opacity-60' : ''
+                          isCancelled ? 'bg-slate-50/60 opacity-60' : selectedIds.has(r.id) ? 'bg-rose-50/40' : ''
                         }`}
                       >
+                        <td className="px-4 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(r.id)}
+                            onChange={() => toggleSelectRecord(r.id)}
+                            className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                          />
+                        </td>
                         <td className="px-4 py-3 text-center text-xs text-slate-400 font-medium">
                           {index + 1}
                         </td>
@@ -859,6 +935,18 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
         error={deleteError}
         onConfirm={handleDeleteRecord}
         onCancel={() => setRecordToDelete(null)}
+      />
+
+      {/* Bulk Delete Dialog */}
+      <ConfirmDialog
+        isOpen={showBulkConfirm}
+        title={`Hapus ${selectedIds.size} Catatan Sekaligus`}
+        message={`Anda akan menghapus ${selectedIds.size} catatan pelanggaran terpilih secara permanen dari database. Tindakan ini tidak dapat dibatalkan. Lanjutkan?`}
+        confirmLabel={isBulkDeleting ? 'Menghapus...' : `Hapus ${selectedIds.size} Catatan`}
+        isDestructive={true}
+        isLoading={isBulkDeleting}
+        onConfirm={handleBulkDeleteRecords}
+        onCancel={() => setShowBulkConfirm(false)}
       />
     </div>
   );

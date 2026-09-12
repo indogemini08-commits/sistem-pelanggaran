@@ -26,6 +26,7 @@ import { User as UserType, SchoolSettings } from '../types';
 interface LoginProps {
   onLoginSuccess: (user: UserType) => void;
   settings: SchoolSettings | null;
+  onOpenParentPortal?: () => void;
 }
 
 interface DemoAccount {
@@ -39,7 +40,7 @@ interface DemoAccount {
   icon: React.ElementType;
 }
 
-export const Login: React.FC<LoginProps> = ({ onLoginSuccess, settings }) => {
+export const Login: React.FC<LoginProps> = ({ onLoginSuccess, settings, onOpenParentPortal }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -240,6 +241,29 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, settings }) => {
               </div>
             </div>
 
+            {/* Parent Portal Highlight Card (Left Column) */}
+            {onOpenParentPortal && (
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/60 via-slate-900/60 to-emerald-950/60 border border-emerald-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-300 shrink-0">
+                    <GraduationCap className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-emerald-200">Akses Mandiri Wali Santri</p>
+                    <p className="text-[11px] text-slate-300">Pantau perkembangan tahfizh & pembinaan santri cukup masukkan NIS.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onOpenParentPortal}
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-500/25 hover:bg-emerald-500/40 border border-emerald-400/40 text-emerald-200 hover:text-white text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>Cek NIS</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
             {/* Trust Badges */}
             <div className="flex flex-wrap items-center gap-4 pt-1 text-xs text-brand-200/80 border-t border-white/10">
               <div className="flex items-center gap-1.5">
@@ -294,6 +318,32 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, settings }) => {
                     Silakan masukkan email resmi dan kata sandi akun Anda.
                   </p>
                 </div>
+
+                {/* Mode Switcher / Banner to Parent Portal */}
+                {onOpenParentPortal && (
+                  <div className="mb-5 p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50/60 border border-emerald-200 shadow-sm flex items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-700/20">
+                        <GraduationCap className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-xs font-black text-emerald-950">Portal Wali Santri</p>
+                          <span className="px-1.5 py-0.5 bg-emerald-200/80 text-emerald-800 text-[9px] font-bold rounded-md">Tanpa Password</span>
+                        </div>
+                        <p className="text-[11px] text-emerald-700 truncate mt-0.5">Cek kedisiplinan & poin cukup masukkan NIS</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={onOpenParentPortal}
+                      className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold shadow-md shadow-emerald-700/20 transition-all duration-150 flex items-center gap-1 shrink-0 cursor-pointer group whitespace-nowrap"
+                    >
+                      <span>Buka Portal</span>
+                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+                  </div>
+                )}
 
                 {/* Error Banner */}
                 {errorMsg && (

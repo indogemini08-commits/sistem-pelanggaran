@@ -24,6 +24,7 @@ import {
   Calendar,
   BookOpen,
   Users,
+  CheckSquare,
 } from 'lucide-react';
 import type { Student, Halaqah, User } from '../types';
 import { api } from '../services/api';
@@ -66,6 +67,11 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [deleteError, setDeleteError] = useState<string>('');
 
+  // Bulk select state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
+  const [showBulkConfirm, setShowBulkConfirm] = useState<boolean>(false);
+
   // Form State for Add / Edit
   const [formNIS, setFormNIS] = useState<string>('');
   const [formName, setFormName] = useState<string>('');
@@ -103,7 +109,8 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
     setLoading(true);
     try {
       const [sList, hList] = await Promise.all([api.students.list(), api.halaqah.list()]);
-      setStudents(sList);
+      const deletedIds = storageSync.getDeletedStudentIds();
+      setStudents(sList.filter((s) => !deletedIds.has(s.id)));
       setHalaqahs(hList);
     } catch (err: any) {
       console.error('Error loading students:', err);
@@ -205,6 +212,7 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
 
       // 2. Immediately update local state so row is removed without delay or resurrection
       setStudents((prev) => prev.filter((s) => s.id !== targetId));
+      setSelectedIds((prev) => { const n = new Set(prev); n.delete(targetId); return n; });
       setStudentToDelete(null);
 
       // 3. Notify application data changed
@@ -217,6 +225,52 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
       setDeleteError(err.message || 'Gagal menghapus data santri dari database');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  // Bulk delete handler
+  const handleBulkDeleteConfirm = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setIsBulkDeleting(true);
+    try {
+      await api.students.bulkDelete(ids, currentUser?.name || 'Admin');
+      setStudents((prev) => prev.filter((s) => !selectedIds.has(s.id)));
+      setSelectedIds(new Set());
+      setShowBulkConfirm(false);
+      storageSync.notifyDataChange({ action: 'delete', resource: 'student', id: ids[0] });
+      await loadStudentsAndHalaqah();
+    } catch (err: any) {
+      alert('Gagal menghapus: ' + err.message);
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  // Toggle individual checkbox
+  const toggleSelectStudent = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // Toggle select all (only visible/filtered students)
+  const toggleSelectAll = () => {
+    if (filteredStudents.every((s) => selectedIds.has(s.id))) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        filteredStudents.forEach((s) => next.delete(s.id));
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        filteredStudents.forEach((s) => next.add(s.id));
+        return next;
+      });
     }
   };
 
@@ -318,6 +372,8 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
       return sortDir === 'asc' ? comparison : -comparison;
     });
 
+  const allFilteredSelected = filteredStudents.length > 0 && filteredStudents.every((s) => selectedIds.has(s.id));
+
   const uniqueClasses = Array.from(new Set(students.map((s) => s.class))).sort();
 
   return (
@@ -334,8 +390,19 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
           </p>
         </div>
 
-        {/* Buttons: Tambah Santri, Import Excel, Export */}
+        {/* Buttons: Tambah Santri, Import Excel, Export, Bulk Delete */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
+          {/* Bulk Delete button — appears when selections are active */}
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => setShowBulkConfirm(true)}
+              className="w-full sm:w-auto justify-center min-h-[44px] px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-sm transition-all flex items-center gap-2 active:scale-[0.98] animate-pulse-once"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Hapus {selectedIds.size} Santri</span>
+            </button>
+          )}
+
           <button
             onClick={handleOpenAddModal}
             className="w-full sm:w-auto justify-center min-h-[44px] px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-sm transition-all flex items-center gap-2 active:scale-[0.98]"
@@ -471,29 +538,39 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
           filteredStudents.map((s, idx) => (
             <div
               key={s.id}
-              className="bg-white rounded-2xl border border-slate-200 shadow-soft p-3.5 space-y-3 hover:border-brand-300 transition-colors"
+              className={`rounded-2xl border shadow-soft p-3.5 space-y-3 transition-colors ${
+                selectedIds.has(s.id) ? 'bg-rose-50/40 border-rose-300' : 'bg-white border-slate-200 hover:border-brand-300'
+              }`}
             >
-              {/* Card Header: NIS, Nama, Gender & Status */}
+              {/* Card Header: Checkbox, NIS, Nama, Gender & Status */}
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                    <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
-                      {s.student_number}
-                    </span>
-                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-brand-50 text-brand-700 border border-brand-200">
-                      Kelas {s.class}
-                    </span>
+                <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(s.id)}
+                    onChange={() => toggleSelectStudent(s.id)}
+                    className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer shrink-0 mt-1"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                      <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
+                        {s.student_number}
+                      </span>
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-brand-50 text-brand-700 border border-brand-200">
+                        Kelas {s.class}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onSelectStudent(s.id)}
+                      className="font-black text-slate-900 hover:text-brand-600 text-base transition-colors text-left line-clamp-1 active:text-brand-700"
+                    >
+                      {s.name}
+                    </button>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {s.gender === 'L' ? 'Laki-laki' : 'Perempuan'} • TA {s.academic_year}
+                    </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => onSelectStudent(s.id)}
-                    className="font-black text-slate-900 hover:text-brand-600 text-base transition-colors text-left line-clamp-1 active:text-brand-700"
-                  >
-                    {s.name}
-                  </button>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    {s.gender === 'L' ? 'Laki-laki' : 'Perempuan'} • TA {s.academic_year}
-                  </p>
                 </div>
 
                 <div className="shrink-0">
@@ -582,6 +659,15 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
           <table className="w-full text-left text-xs sm:text-sm">
             <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold tracking-wider border-b border-slate-200">
               <tr>
+                <th className="px-4 py-3.5 text-center w-10">
+                  <input
+                    type="checkbox"
+                    checked={allFilteredSelected}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                    title="Pilih semua"
+                  />
+                </th>
                 <th className="px-4 py-3.5 text-center w-12">#</th>
                 <th className="px-4 py-3.5">NIS</th>
                 <th className="px-4 py-3.5">Nama Santri</th>
@@ -594,7 +680,15 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredStudents.map((s, idx) => (
-                <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
+                <tr key={s.id} className={`hover:bg-slate-50/80 transition-colors ${selectedIds.has(s.id) ? 'bg-rose-50/50' : ''}`}>
+                  <td className="px-4 py-3.5 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(s.id)}
+                      onChange={() => toggleSelectStudent(s.id)}
+                      className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                    />
+                  </td>
                   <td className="px-4 py-3.5 text-center font-bold text-slate-400">
                     {idx + 1}
                   </td>
@@ -1063,6 +1157,18 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
           setStudentToDelete(null);
           setDeleteError('');
         }}
+      />
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showBulkConfirm}
+        title={`Hapus ${selectedIds.size} Santri Sekaligus`}
+        message={`Anda akan menghapus ${selectedIds.size} santri terpilih beserta SELURUH riwayat pelanggaran dan poin mereka secara permanen dari database. Tindakan ini tidak dapat dibatalkan. Lanjutkan?`}
+        confirmLabel={isBulkDeleting ? 'Menghapus...' : `Hapus ${selectedIds.size} Santri`}
+        isDestructive={true}
+        isLoading={isBulkDeleting}
+        onConfirm={handleBulkDeleteConfirm}
+        onCancel={() => setShowBulkConfirm(false)}
       />
     </div>
   );

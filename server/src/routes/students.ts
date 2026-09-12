@@ -104,6 +104,94 @@ router.get('/', (req: Request, res: Response) => {
   }
 });
 
+// GET portal detail by NIS for Parent/Guardian Portal
+router.get('/portal/:nis', (req: Request, res: Response) => {
+  try {
+    const rawNis = req.params.nis ? req.params.nis.trim() : '';
+    if (!rawNis) {
+      return res.status(400).json({ error: 'Nomor Induk Santri (NIS) wajib diisi' });
+    }
+
+    const student = get<any>(`
+      SELECT s.*,
+             h.name as halaqah_name, h.schedule as halaqah_schedule, h.location as halaqah_location,
+             t.name as teacher_name, t.phone as teacher_phone
+      FROM students s
+      LEFT JOIN halaqah h ON h.id = s.halaqah_id
+      LEFT JOIN teachers t ON t.id = h.teacher_id
+      WHERE (s.student_number = ? OR s.id = ?) AND s.status = 'active'
+    `, [rawNis, rawNis]);
+
+    if (!student) {
+      return res.status(404).json({
+        error: `Data santri dengan NIS "${rawNis}" tidak ditemukan atau berstatus non-aktif. Pastikan NIS yang dimasukkan sudah benar.`,
+      });
+    }
+
+    // Point thresholds
+    const thresholds = query<any>('SELECT * FROM point_thresholds ORDER BY sort_order ASC');
+
+    // Violations list (all records for this student)
+    const records = query<any>(`
+      SELECT vr.*
+      FROM violation_records vr
+      WHERE vr.student_id = ?
+      ORDER BY vr.date DESC, vr.time DESC
+    `, [student.id]);
+
+    // Positive deeds list (Kebaikan & Apresiasi)
+    const positiveRecords = query<any>(`
+      SELECT pr.*, pa.category as action_category, pa.code as action_code
+      FROM positive_records pr
+      LEFT JOIN positive_actions pa ON pa.id = pr.action_id
+      WHERE pr.student_id = ?
+      ORDER BY pr.date DESC, pr.time DESC
+    `, [student.id]);
+
+    // Calculate gross violation points
+    const activeRecords = records.filter((r: any) => r.status === 'active');
+    const grossTahfizh = activeRecords.filter((r: any) => r.division === 'tahfizh').reduce((sum: number, r: any) => sum + Number(r.points_snapshot || 0), 0);
+    const grossKesantrian = activeRecords.filter((r: any) => r.division === 'kesantrian').reduce((sum: number, r: any) => sum + Number(r.points_snapshot || 0), 0);
+
+    // Calculate active positive deductions
+    const activePosRecords = positiveRecords.filter((r: any) => r.status === 'active');
+    const deductedTahfizh = activePosRecords.filter((r: any) => r.division === 'tahfizh').reduce((sum: number, r: any) => sum + Number(r.points_deducted || 0), 0);
+    const deductedKesantrian = activePosRecords.filter((r: any) => r.division === 'kesantrian').reduce((sum: number, r: any) => sum + Number(r.points_deducted || 0), 0);
+
+    // Net points
+    const netTahfizh = Math.max(0, grossTahfizh - deductedTahfizh);
+    const netKesantrian = Math.max(0, grossKesantrian - deductedKesantrian);
+    const totalNetPoints = netTahfizh + netKesantrian;
+
+    const statusInfo = getStatusForPoints(totalNetPoints, thresholds);
+
+    // School Settings for Kop & contact
+    const settings = get<any>('SELECT * FROM school_settings LIMIT 1') || null;
+
+    return res.json({
+      student: {
+        ...student,
+        total_points: totalNetPoints,
+        tahfizh_points: netTahfizh,
+        kesantrian_points: netKesantrian,
+        gross_total_points: grossTahfizh + grossKesantrian,
+        gross_tahfizh_points: grossTahfizh,
+        gross_kesantrian_points: grossKesantrian,
+        tahfizh_deductions: deductedTahfizh,
+        kesantrian_deductions: deductedKesantrian,
+        total_deductions: deductedTahfizh + deductedKesantrian,
+        status_info: statusInfo,
+      },
+      records,
+      positive_records: positiveRecords,
+      thresholds,
+      settings,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Gagal memuat data portal wali santri' });
+  }
+});
+
 // GET single student detail
 router.get('/:id', (req: Request, res: Response) => {
   try {
@@ -129,7 +217,7 @@ router.get('/:id', (req: Request, res: Response) => {
       FROM violation_records vr
       WHERE vr.student_id = ?
       ORDER BY vr.date DESC, vr.time DESC
-    `, [id]);
+    `, [student.id]);
 
     // Positive deeds list (Kebaikan & Pengurangan Poin)
     const positiveRecords = query<any>(`
@@ -138,17 +226,17 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN positive_actions pa ON pa.id = pr.action_id
       WHERE pr.student_id = ?
       ORDER BY pr.date DESC, pr.time DESC
-    `, [id]);
+    `, [student.id]);
 
     // Calculate gross violation points
-    const activeRecords = records.filter(r => r.status === 'active');
-    const grossTahfizh = activeRecords.filter(r => r.division === 'tahfizh').reduce((sum, r) => sum + Number(r.points_snapshot || 0), 0);
-    const grossKesantrian = activeRecords.filter(r => r.division === 'kesantrian').reduce((sum, r) => sum + Number(r.points_snapshot || 0), 0);
+    const activeRecords = records.filter((r: any) => r.status === 'active');
+    const grossTahfizh = activeRecords.filter((r: any) => r.division === 'tahfizh').reduce((sum: number, r: any) => sum + Number(r.points_snapshot || 0), 0);
+    const grossKesantrian = activeRecords.filter((r: any) => r.division === 'kesantrian').reduce((sum: number, r: any) => sum + Number(r.points_snapshot || 0), 0);
 
     // Calculate active positive deductions
-    const activePosRecords = positiveRecords.filter(r => r.status === 'active');
-    const deductedTahfizh = activePosRecords.filter(r => r.division === 'tahfizh').reduce((sum, r) => sum + Number(r.points_deducted || 0), 0);
-    const deductedKesantrian = activePosRecords.filter(r => r.division === 'kesantrian').reduce((sum, r) => sum + Number(r.points_deducted || 0), 0);
+    const activePosRecords = positiveRecords.filter((r: any) => r.status === 'active');
+    const deductedTahfizh = activePosRecords.filter((r: any) => r.division === 'tahfizh').reduce((sum: number, r: any) => sum + Number(r.points_deducted || 0), 0);
+    const deductedKesantrian = activePosRecords.filter((r: any) => r.division === 'kesantrian').reduce((sum: number, r: any) => sum + Number(r.points_deducted || 0), 0);
 
     // Net points
     const netTahfizh = Math.max(0, grossTahfizh - deductedTahfizh);
@@ -165,7 +253,7 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN teachers t ON t.id = sh.teacher_id
       WHERE sh.student_id = ?
       ORDER BY sh.start_date DESC
-    `, [id]);
+    `, [student.id]);
 
     return res.json({
       student: {
@@ -345,6 +433,52 @@ router.delete('/:id', (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('Error saat menghapus santri:', err);
     return res.status(500).json({ error: err.message || 'Gagal menghapus santri dari database' });
+  }
+});
+
+// POST bulk delete students (Admin only)
+router.post('/bulk-delete', (req: Request, res: Response) => {
+  try {
+    const { ids, actorName = 'Admin' } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'Daftar ID santri wajib diisi' });
+    }
+
+    const deleted: string[] = [];
+    const skipped: string[] = [];
+
+    for (const id of ids) {
+      const student = get<any>('SELECT id, name, student_number FROM students WHERE id = ?', [id]);
+      if (!student) {
+        skipped.push(id);
+        continue;
+      }
+      run('DELETE FROM student_halaqah_history WHERE student_id = ?', [student.id]);
+      run('DELETE FROM violation_records WHERE student_id = ?', [student.id]);
+      run('DELETE FROM positive_records WHERE student_id = ?', [student.id]);
+      run('DELETE FROM students WHERE id = ?', [student.id]);
+      logAudit({
+        userName: actorName,
+        action: 'BULK_DELETE_STUDENT',
+        tableName: 'students',
+        recordId: student.id,
+        oldData: { name: student.name, student_number: student.student_number },
+      });
+      deleted.push(student.id);
+    }
+
+    persistDb();
+    console.log(`[BULK_DELETE] ${deleted.length} santri dihapus permanen oleh ${actorName}`);
+    return res.json({
+      success: true,
+      deletedCount: deleted.length,
+      skippedCount: skipped.length,
+      deletedIds: deleted,
+      message: `${deleted.length} santri beserta seluruh riwayatnya berhasil dihapus permanen`,
+    });
+  } catch (err: any) {
+    console.error('Error bulk delete santri:', err);
+    return res.status(500).json({ error: err.message || 'Gagal menghapus santri secara massal' });
   }
 });
 

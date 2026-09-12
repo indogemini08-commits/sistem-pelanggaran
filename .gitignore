@@ -49,7 +49,11 @@ lerna-debug.log*
 .DS_Store
 Thumbs.db
 
-# Temporary & Scratch Dirs
+# Temporary, Cache & Scratch Dirs
 scratch/
 tmp/
 temp/
+.vercel/
+coverage/
+*.tsbuildinfo
+vite.config.ts.timestamp*

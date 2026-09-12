@@ -18,12 +18,22 @@ import { PositiveRecordsPage } from './pages/PositiveRecordsPage';
 import { UserManagementPage } from './pages/UserManagementPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AuditLogPage } from './pages/AuditLogPage';
+import { ParentPortalPage } from './pages/ParentPortalPage';
 
 export function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [settings, setSettings] = useState<SchoolSettings | null>(null);
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+
+  // Parent Portal state (accessible without login)
+  const [showParentPortal, setShowParentPortal] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.has('nis') || urlParams.get('portal') === 'wali';
+    }
+    return false;
+  });
 
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const [isQuickRecordOpen, setIsQuickRecordOpen] = useState<boolean>(false);
@@ -96,9 +106,29 @@ export function App() {
     );
   }
 
-  // If not logged in, show professional Login page
+  // If not logged in, allow toggling between Staff Login and Parent Portal
   if (!currentUser) {
-    return <Login onLoginSuccess={handleLoginSuccess} settings={settings} />;
+    if (showParentPortal) {
+      return (
+        <ParentPortalPage
+          settings={settings}
+          onBackToLogin={() => {
+            setShowParentPortal(false);
+            const url = new URL(window.location.href);
+            url.searchParams.delete('portal');
+            url.searchParams.delete('nis');
+            window.history.replaceState({}, '', url.toString());
+          }}
+        />
+      );
+    }
+    return (
+      <Login
+        onLoginSuccess={handleLoginSuccess}
+        settings={settings}
+        onOpenParentPortal={() => setShowParentPortal(true)}
+      />
+    );
   }
 
   return (
@@ -239,6 +269,14 @@ export function App() {
           )}
 
           {currentTab === 'audit' && <AuditLogPage />}
+
+          {currentTab === 'parent_portal' && (
+            <ParentPortalPage
+              settings={settings}
+              onBackToLogin={() => setCurrentTab('dashboard')}
+              isStaffPreview={true}
+            />
+          )}
         </main>
 
         {/* Clean Subtle Footer */}

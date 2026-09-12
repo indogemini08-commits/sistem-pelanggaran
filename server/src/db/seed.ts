@@ -113,6 +113,8 @@ export function seedKesantrianViolationsIfEmpty() {
   ];
 
   for (const r of sampleKsRecords) {
+    const stdExists = query<{ id: string }>('SELECT id FROM students WHERE id = ?', [r.studentId]);
+    if (stdExists.length === 0) continue;
     const exists = query<{ id: string }>('SELECT id FROM violation_records WHERE id = ?', [r.id]);
     if (exists.length === 0) {
       run(
@@ -192,7 +194,8 @@ export function seedPositiveActionsIfEmpty() {
   }
 
   const posCount = query<{ count: number }>("SELECT COUNT(*) as count FROM positive_records")[0]?.count || 0;
-  if (posCount === 0) {
+  const std002Exists = query<{ id: string }>("SELECT id FROM students WHERE id = 'std_002'")[0];
+  if (posCount === 0 && std002Exists) {
     const today = new Date().toISOString().split('T')[0];
     run(
       `INSERT INTO positive_records (

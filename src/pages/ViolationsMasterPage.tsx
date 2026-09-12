@@ -48,6 +48,11 @@ export const ViolationsMasterPage: React.FC<ViolationsMasterPageProps> = ({
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [deleteError, setDeleteError] = useState<string>('');
 
+  // Bulk delete state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
+  const [showBulkConfirm, setShowBulkConfirm] = useState<boolean>(false);
+
   // Form states
   const [formDivision, setFormDivision] = useState<ViolationDivision>('tahfizh');
   const [formCode, setFormCode] = useState<string>('');
@@ -168,16 +173,44 @@ export const ViolationsMasterPage: React.FC<ViolationsMasterPageProps> = ({
 
   const handleDeleteConfirm = async () => {
     if (!violationToDelete) return;
+    const targetId = violationToDelete.id;
     setIsDeleting(true);
     setDeleteError('');
     try {
-      await api.violations.delete(violationToDelete.id, currentUser?.name || 'Admin');
+      await api.violations.delete(targetId, currentUser?.name || 'Admin');
+      setSelectedIds((prev) => { const n = new Set(prev); n.delete(targetId); return n; });
       setViolationToDelete(null);
       await loadViolations();
     } catch (err: any) {
       setDeleteError(err.message || 'Gagal menghapus master pelanggaran');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const toggleSelectViolation = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDeleteViolations = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setIsBulkDeleting(true);
+    try {
+      await api.violations.bulkDelete(ids, currentUser?.name || 'Admin');
+      setViolations((prev) => prev.filter((v) => !selectedIds.has(v.id)));
+      setSelectedIds(new Set());
+      setShowBulkConfirm(false);
+      await loadViolations();
+    } catch (err: any) {
+      alert('Gagal menghapus aturan secara massal: ' + (err?.message || err));
+    } finally {
+      setIsBulkDeleting(false);
     }
   };
 
@@ -222,13 +255,25 @@ export const ViolationsMasterPage: React.FC<ViolationsMasterPageProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={handleOpenAdd}
-          className="w-full sm:w-auto justify-center min-h-[44px] px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-sm transition-all flex items-center gap-2 active:scale-[0.98]"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Tambah Aturan Baru</span>
-        </button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => setShowBulkConfirm(true)}
+              className="w-full sm:w-auto justify-center min-h-[44px] px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-sm transition-all flex items-center gap-2 active:scale-[0.98]"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Hapus {selectedIds.size} Aturan</span>
+            </button>
+          )}
+
+          <button
+            onClick={handleOpenAdd}
+            className="w-full sm:w-auto justify-center min-h-[44px] px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-sm transition-all flex items-center gap-2 active:scale-[0.98]"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Tambah Aturan Baru</span>
+          </button>
+        </div>
       </div>
 
       {/* Division Navigation Switcher */}
@@ -345,11 +390,19 @@ export const ViolationsMasterPage: React.FC<ViolationsMasterPageProps> = ({
             return (
               <div
                 key={v.id}
-                className="bg-white rounded-2xl border border-slate-200 shadow-soft p-3.5 space-y-3 hover:border-brand-300 transition-colors"
+                className={`rounded-2xl border shadow-soft p-3.5 space-y-3 transition-colors ${
+                  selectedIds.has(v.id) ? 'bg-rose-50/40 border-rose-300' : 'bg-white border-slate-200 hover:border-brand-300'
+                }`}
               >
-                {/* Header Card: Kode, Divisi, Status */}
+                {/* Header Card: Checkbox, Kode, Divisi, Status */}
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(v.id)}
+                      onChange={() => toggleSelectViolation(v.id)}
+                      className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                    />
                     <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-800">
                       {v.code}
                     </span>
@@ -443,6 +496,21 @@ export const ViolationsMasterPage: React.FC<ViolationsMasterPageProps> = ({
           <table className="w-full text-left text-xs sm:text-sm">
             <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold tracking-wider border-b border-slate-200">
               <tr>
+                <th className="py-3.5 px-4 text-center w-12">
+                  <input
+                    type="checkbox"
+                    checked={filteredViolations.length > 0 && filteredViolations.every((v) => selectedIds.has(v.id))}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedIds(new Set(filteredViolations.map((v) => v.id)));
+                      } else {
+                        setSelectedIds(new Set());
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                    title="Pilih semua"
+                  />
+                </th>
                 <th className="py-3.5 px-4">Kode</th>
                 <th className="py-3.5 px-4">Divisi</th>
                 <th className="py-3.5 px-4">Nama Pelanggaran</th>
@@ -474,7 +542,15 @@ export const ViolationsMasterPage: React.FC<ViolationsMasterPageProps> = ({
                   const isKesantrian = v.division === 'kesantrian';
 
                   return (
-                    <tr key={v.id} className="hover:bg-slate-50/70 transition-colors">
+                    <tr key={v.id} className={`transition-colors ${selectedIds.has(v.id) ? 'bg-rose-50/40' : 'hover:bg-slate-50/70'}`}>
+                      <td className="py-3.5 px-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(v.id)}
+                          onChange={() => toggleSelectViolation(v.id)}
+                          className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                        />
+                      </td>
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-800">
                         {v.code}
                       </td>
@@ -914,6 +990,18 @@ export const ViolationsMasterPage: React.FC<ViolationsMasterPageProps> = ({
         error={deleteError}
         onConfirm={handleDeleteConfirm}
         onCancel={() => setViolationToDelete(null)}
+      />
+
+      {/* Bulk Delete Dialog */}
+      <ConfirmDialog
+        isOpen={showBulkConfirm}
+        title="Hapus Massal Master Pelanggaran"
+        message={`Apakah Anda yakin ingin menghapus ${selectedIds.size} master aturan pelanggaran yang dipilih? Catatan riwayat kejadian masa lalu tetap aman di rekap santri.`}
+        confirmLabel={isBulkDeleting ? 'Menghapus...' : `Hapus ${selectedIds.size} Aturan`}
+        isDestructive={true}
+        isLoading={isBulkDeleting}
+        onConfirm={handleBulkDeleteViolations}
+        onCancel={() => setShowBulkConfirm(false)}
       />
     </div>
   );

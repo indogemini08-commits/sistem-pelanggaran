@@ -132,6 +132,42 @@ router.put('/:id', (req: Request, res: Response) => {
   }
 });
 
+// POST bulk delete master violations (Admin only)
+router.post('/bulk-delete', (req: Request, res: Response) => {
+  try {
+    const { ids, actorName = 'Admin' } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'Daftar ID master pelanggaran wajib diisi' });
+    }
+
+    const deleted: string[] = [];
+    for (const id of ids) {
+      const violation = get<any>('SELECT * FROM violations WHERE id = ?', [id]);
+      if (!violation) continue;
+
+      run('UPDATE violation_records SET violation_id = NULL WHERE violation_id = ?', [id]);
+      run('DELETE FROM violations WHERE id = ?', [id]);
+      logAudit({
+        userName: actorName,
+        action: 'BULK_DELETE_MASTER_VIOLATION',
+        tableName: 'violations',
+        recordId: id,
+        oldData: violation,
+      });
+      deleted.push(id);
+    }
+
+    return res.json({
+      success: true,
+      deletedCount: deleted.length,
+      deletedIds: deleted,
+      message: `${deleted.length} master pelanggaran berhasil dihapus`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Gagal menghapus pelanggaran secara massal' });
+  }
+});
+
 // DELETE master violation
 router.delete('/:id', (req: Request, res: Response) => {
   try {

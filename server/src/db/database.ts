@@ -138,6 +138,10 @@ function runMigrations(database: Database) {
         FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE SET NULL
       );
     `);
+    // Automatic cleanup of orphaned records to ensure foreign key integrity and prevent dashboard desync
+    database.run("DELETE FROM violation_records WHERE student_id NOT IN (SELECT id FROM students);");
+    database.run("DELETE FROM positive_records WHERE student_id NOT IN (SELECT id FROM students);");
+    database.run("DELETE FROM student_halaqah_history WHERE student_id NOT IN (SELECT id FROM students);");
   } catch (e: any) {
     console.error('Peringatan pembuatan tabel positive_actions/positive_records:', e?.message || e);
   }

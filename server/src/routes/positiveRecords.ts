@@ -241,4 +241,44 @@ router.delete('/:id', (req: Request, res: Response) => {
   }
 });
 
+// POST bulk delete positive records (Admin only)
+router.post('/bulk-delete', (req: Request, res: Response) => {
+  try {
+    const { ids, actorName = 'Admin' } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'Daftar ID catatan kebaikan wajib diisi' });
+    }
+
+    const deleted: string[] = [];
+    const skipped: string[] = [];
+
+    for (const id of ids) {
+      const record = get<any>('SELECT id FROM positive_records WHERE id = ?', [id]);
+      if (!record) {
+        skipped.push(id);
+        continue;
+      }
+      run('DELETE FROM positive_records WHERE id = ?', [id]);
+      logAudit({
+        userName: actorName,
+        action: 'BULK_DELETE_POSITIVE_RECORD',
+        tableName: 'positive_records',
+        recordId: id,
+      });
+      deleted.push(id);
+    }
+
+    persistDb();
+    return res.json({
+      success: true,
+      deletedCount: deleted.length,
+      skippedCount: skipped.length,
+      deletedIds: deleted,
+      message: `${deleted.length} catatan kebaikan berhasil dihapus permanen`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Gagal menghapus catatan kebaikan secara massal' });
+  }
+});
+
 export default router;

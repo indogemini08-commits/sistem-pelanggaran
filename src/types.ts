@@ -56,6 +56,7 @@ export interface Student {
   halaqah_id?: string | null;
   halaqah_name?: string | null;
   teacher_name?: string | null;
+  teacher_phone?: string | null;
   academic_year: string;
   status: 'active' | 'inactive';
   total_points: number;

@@ -17,6 +17,7 @@ import {
   Sparkles,
   MinusCircle,
   User,
+  Trash2,
 } from 'lucide-react';
 import { PositiveRecord, SchoolSettings, User as UserType, ViolationDivision } from '../types';
 import { api } from '../services/api';
@@ -58,6 +59,11 @@ export const PositiveRecordsPage: React.FC<PositiveRecordsPageProps> = ({
   // Delete Permanent Dialog (Admin only)
   const [recordToDelete, setRecordToDelete] = useState<PositiveRecord | null>(null);
   const [deleting, setDeleting] = useState<boolean>(false);
+
+  // Bulk Delete State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
+  const [showBulkConfirm, setShowBulkConfirm] = useState<boolean>(false);
 
   useEffect(() => {
     setFilterDivision(initialDivision);
@@ -176,6 +182,7 @@ export const PositiveRecordsPage: React.FC<PositiveRecordsPageProps> = ({
     try {
       await api.positiveRecords.delete(targetId, currentUser?.name || 'Admin');
       setRecords((prev) => prev.filter((r) => r.id !== targetId));
+      setSelectedIds((prev) => { const n = new Set(prev); n.delete(targetId); return n; });
       setRecordToDelete(null);
       storageSync.notifyDataChange({ action: 'delete', resource: 'positive_record', id: targetId });
       await loadRecords();
@@ -183,6 +190,35 @@ export const PositiveRecordsPage: React.FC<PositiveRecordsPageProps> = ({
       alert('Gagal menghapus: ' + err.message);
     } finally {
       setDeleting(false);
+    }
+  };
+
+  // Toggle selection for bulk delete
+  const toggleSelectPosRecord = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // Bulk delete positive records
+  const handleBulkDeletePosRecords = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setIsBulkDeleting(true);
+    try {
+      await api.positiveRecords.bulkDelete(ids, currentUser?.name || 'Admin');
+      setRecords((prev) => prev.filter((r) => !selectedIds.has(r.id)));
+      setSelectedIds(new Set());
+      setShowBulkConfirm(false);
+      storageSync.notifyDataChange({ action: 'delete', resource: 'positive_record', id: ids[0] });
+      await loadRecords();
+    } catch (err: any) {
+      alert('Gagal menghapus: ' + err.message);
+    } finally {
+      setIsBulkDeleting(false);
     }
   };
 
@@ -238,6 +274,16 @@ export const PositiveRecordsPage: React.FC<PositiveRecordsPageProps> = ({
 
         {/* Action Buttons: Stack vertically on mobile, full width */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
+          {/* Bulk Delete button */}
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => setShowBulkConfirm(true)}
+              className="flex items-center justify-center gap-2 px-4 py-3 sm:py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-sm sm:text-xs font-bold rounded-xl shadow-sm transition-all w-full sm:w-auto min-h-[44px] sm:min-h-0"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Hapus {selectedIds.size} Catatan</span>
+            </button>
+          )}
           {onOpenQuickReward && (
             <button
               onClick={onOpenQuickReward}
@@ -415,22 +461,30 @@ export const PositiveRecordsPage: React.FC<PositiveRecordsPageProps> = ({
                   <div
                     key={r.id}
                     className={`p-3.5 space-y-2.5 transition-colors ${
-                      isCancelled ? 'opacity-60 bg-slate-50/40' : 'hover:bg-slate-50/70'
+                      isCancelled ? 'opacity-60 bg-slate-50/40' : selectedIds.has(r.id) ? 'bg-emerald-50/50' : 'hover:bg-slate-50/70'
                     }`}
                   >
                     {/* Header Row: Student name, division badge, and status */}
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => onSelectStudent && onSelectStudent(r.student_id)}
-                          className="font-bold text-slate-900 text-sm text-left hover:text-emerald-700 transition-colors truncate block"
-                        >
-                          {r.student_name || 'Santri'}
-                        </button>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          NIS: {r.student_nis || '-'} • Kls {r.student_class_snapshot}
-                        </p>
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(r.id)}
+                          onChange={() => toggleSelectPosRecord(r.id)}
+                          className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer shrink-0 mt-1"
+                        />
+                        <div className="min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => onSelectStudent && onSelectStudent(r.student_id)}
+                            className="font-bold text-slate-900 text-sm text-left hover:text-emerald-700 transition-colors truncate block"
+                          >
+                            {r.student_name || 'Santri'}
+                          </button>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            NIS: {r.student_nis || '-'} • Kls {r.student_class_snapshot}
+                          </p>
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -513,6 +567,21 @@ export const PositiveRecordsPage: React.FC<PositiveRecordsPageProps> = ({
               <table className="w-full text-left text-xs sm:text-sm">
                 <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
                   <tr>
+                    <th className="px-4 py-3.5 text-center w-12">
+                      <input
+                        type="checkbox"
+                        checked={filteredRecords.length > 0 && filteredRecords.every((r) => selectedIds.has(r.id))}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedIds(new Set(filteredRecords.map((r) => r.id)));
+                          } else {
+                            setSelectedIds(new Set());
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                        title="Pilih semua"
+                      />
+                    </th>
                     <th className="px-4 py-3.5">Tanggal & Waktu</th>
                     <th className="px-4 py-3.5">Santri</th>
                     <th className="px-4 py-3.5">Divisi</th>
@@ -530,9 +599,17 @@ export const PositiveRecordsPage: React.FC<PositiveRecordsPageProps> = ({
                       <tr
                         key={r.id}
                         className={`hover:bg-slate-50/80 transition-colors ${
-                          isCancelled ? 'opacity-60 bg-slate-50/40' : ''
+                          isCancelled ? 'opacity-60 bg-slate-50/40' : selectedIds.has(r.id) ? 'bg-emerald-50/40' : ''
                         }`}
                       >
+                        <td className="px-4 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(r.id)}
+                            onChange={() => toggleSelectPosRecord(r.id)}
+                            className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                          />
+                        </td>
                         <td className="px-4 py-3.5 whitespace-nowrap text-slate-600">
                           <div className="font-semibold text-slate-800">{r.date}</div>
                           <div className="text-[11px] text-slate-400">{r.time} WIB</div>
@@ -717,6 +794,18 @@ export const PositiveRecordsPage: React.FC<PositiveRecordsPageProps> = ({
         isLoading={deleting}
         onConfirm={handleDelete}
         onCancel={() => setRecordToDelete(null)}
+      />
+
+      {/* Bulk Delete Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={showBulkConfirm}
+        title="Hapus Massal Catatan Kebaikan"
+        message={`Apakah Anda yakin ingin menghapus ${selectedIds.size} catatan kebaikan yang dipilih secara permanen dari database? Tindakan ini tidak dapat dibatalkan.`}
+        confirmLabel={isBulkDeleting ? 'Menghapus...' : `Hapus ${selectedIds.size} Catatan`}
+        isDestructive={true}
+        isLoading={isBulkDeleting}
+        onConfirm={handleBulkDeletePosRecords}
+        onCancel={() => setShowBulkConfirm(false)}
       />
     </div>
   );
