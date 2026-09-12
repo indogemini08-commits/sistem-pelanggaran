@@ -2863,6 +2863,7 @@ router8.get("/", (req, res) => {
     let settings = get('SELECT * FROM school_settings WHERE id = "settings_default"');
     if (!settings) {
       settings = {
+        id: "settings_default",
         app_name: "Sistem Poin Santri Halaqah",
         school_name: "Pesantren Tahfizh Al-Qur'an Imam Asy-Syathibi",
         address: "Jl. Karang Anyar No. 45, Kompleks Islamic Center, Bogor, Jawa Barat",
@@ -2872,8 +2873,30 @@ router8.get("/", (req, res) => {
         kop_surat_text: "BIDANG PENDIDIKAN DAN KEPENGASUHAN - DIVISI HALAQAH TAHFIZH",
         current_academic_year: "2025/2026"
       };
+      run(
+        `INSERT OR IGNORE INTO school_settings (id, app_name, school_name, address, phone, email, logo_url, kop_surat_text, current_academic_year)
+         VALUES ('settings_default', ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [settings.app_name, settings.school_name, settings.address, settings.phone, settings.email, settings.logo_url, settings.kop_surat_text, settings.current_academic_year]
+      );
     }
-    const thresholds = query("SELECT * FROM point_thresholds ORDER BY sort_order ASC");
+    let thresholds = query("SELECT * FROM point_thresholds ORDER BY sort_order ASC");
+    if (!thresholds || thresholds.length === 0) {
+      const defaultThresholds = [
+        { id: "th_1", min: 0, max: 19, name: "AMAN", color: "emerald", desc: "Kedisiplinan dan capaian hafalan santri dalam kondisi baik.", order: 1 },
+        { id: "th_2", min: 20, max: 49, name: "PERLU PEMBINAAN", color: "amber", desc: "Perlu bimbingan dan pemantauan berkala oleh Muhafizh.", order: 2 },
+        { id: "th_3", min: 50, max: 74, name: "PEMBINAAN KHUSUS", color: "orange", desc: "Pemanggilan oleh Koordinator Tahfizh dan jadwal murojaah tambahan.", order: 3 },
+        { id: "th_4", min: 75, max: 99, name: "PERINGATAN RESMI", color: "rose", desc: "Penerbitan Surat Peringatan (SP) dan pemanggilan orang tua/wali.", order: 4 },
+        { id: "th_5", min: 100, max: 999, name: "TINDAKAN LANJUT", color: "red", desc: "Sidang Dewan Asatidz dan evaluasi kelanjutan kepesertaan halaqah.", order: 5 }
+      ];
+      for (const th of defaultThresholds) {
+        run(
+          `INSERT OR IGNORE INTO point_thresholds (id, minimum_points, maximum_points, status_name, badge_color, description, sort_order)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [th.id, th.min, th.max, th.name, th.color, th.desc, th.order]
+        );
+      }
+      thresholds = query("SELECT * FROM point_thresholds ORDER BY sort_order ASC");
+    }
     return res.json({
       settings,
       thresholds
