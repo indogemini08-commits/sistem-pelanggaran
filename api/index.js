@@ -2896,18 +2896,17 @@ router8.put("/school", async (req, res) => {
       actorName = "Admin"
     } = req.body;
     const old = get('SELECT * FROM school_settings WHERE id = "settings_default"');
-    const updatedAppName = appName ? appName.trim() : old?.app_name;
-    const updatedSchoolName = schoolName ? schoolName.trim() : old?.school_name;
-    const updatedAddress = address ? address.trim() : old?.address;
-    const updatedPhone = phone !== void 0 ? phone.trim() : old?.phone;
-    const updatedEmail = email !== void 0 ? email.trim() : old?.email;
-    const updatedLogo = logoUrl !== void 0 ? logoUrl.trim() : old?.logo_url;
-    const updatedKop = kopSuratText !== void 0 ? kopSuratText.trim() : old?.kop_surat_text;
-    const updatedYear = currentAcademicYear ? currentAcademicYear.trim() : old?.current_academic_year;
+    const updatedAppName = appName ? appName.trim() : old?.app_name || "Sistem Poin Santri Halaqah";
+    const updatedSchoolName = schoolName ? schoolName.trim() : old?.school_name || "Pesantren Tahfizh Al-Qur'an Imam Asy-Syathibi";
+    const updatedAddress = address ? address.trim() : old?.address || "Jl. Karang Anyar No. 45, Kompleks Islamic Center, Bogor, Jawa Barat";
+    const updatedPhone = phone !== void 0 ? phone.trim() : old?.phone || "0811-9876-5432";
+    const updatedEmail = email !== void 0 ? email.trim() : old?.email || "tahfizh@imamsyathibi.sch.id";
+    const updatedLogo = logoUrl !== void 0 ? logoUrl.trim() : old?.logo_url || "/logo.svg";
+    const updatedKop = kopSuratText !== void 0 ? kopSuratText.trim() : old?.kop_surat_text || "BIDANG PENDIDIKAN DAN KEPENGASUHAN - DIVISI HALAQAH TAHFIZH";
+    const updatedYear = currentAcademicYear ? currentAcademicYear.trim() : old?.current_academic_year || "2025/2026";
     run(
-      `UPDATE school_settings
-       SET app_name = ?, school_name = ?, address = ?, phone = ?, email = ?, logo_url = ?, kop_surat_text = ?, current_academic_year = ?
-       WHERE id = "settings_default"`,
+      `INSERT OR REPLACE INTO school_settings (id, app_name, school_name, address, phone, email, logo_url, kop_surat_text, current_academic_year)
+       VALUES ('settings_default', ?, ?, ?, ?, ?, ?, ?, ?)`,
       [updatedAppName, updatedSchoolName, updatedAddress, updatedPhone, updatedEmail, updatedLogo, updatedKop, updatedYear]
     );
     logAudit({
