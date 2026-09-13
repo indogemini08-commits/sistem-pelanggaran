@@ -292,17 +292,17 @@ export const ViolationsMasterPage: React.FC<ViolationsMasterPageProps> = ({
       </div>
 
       {/* Division Navigation Switcher */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 p-1.5 bg-slate-200/70 rounded-2xl w-full sm:w-fit">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 p-1.5 bg-slate-200/70 dark:bg-slate-900/80 border border-slate-300/60 dark:border-slate-800 rounded-2xl w-full sm:w-fit shadow-xs">
         <button
           onClick={() => setActiveDivisionFilter('all')}
           className={`w-full min-h-[42px] justify-center px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
             activeDivisionFilter === 'all'
-              ? 'bg-white text-slate-900 shadow-md ring-1 ring-slate-300'
-              : 'text-slate-600 hover:text-slate-900'
+              ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-md ring-1 ring-slate-300 dark:ring-slate-700'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-300/40 dark:hover:bg-slate-800/60'
           }`}
         >
           <span>🌐 Semua Master</span>
-          <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-[10px] text-slate-600 font-extrabold border border-slate-200">
+          <span className="px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-[10px] text-slate-600 dark:text-slate-200 font-extrabold border border-slate-200 dark:border-slate-600">
             {violations.length}
           </span>
         </button>
@@ -312,13 +312,13 @@ export const ViolationsMasterPage: React.FC<ViolationsMasterPageProps> = ({
           className={`w-full min-h-[42px] justify-center px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
             activeDivisionFilter === 'tahfizh'
               ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
-              : 'text-slate-600 hover:text-emerald-800'
+              : 'text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-slate-300/40 dark:hover:bg-slate-800/60'
           }`}
         >
           <BookOpen className="w-3.5 h-3.5" />
           <span>🕌 Divisi Tahfizh</span>
           <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-            activeDivisionFilter === 'tahfizh' ? 'bg-white/20 text-white' : 'bg-slate-300 text-slate-700'
+            activeDivisionFilter === 'tahfizh' ? 'bg-white/20 text-white' : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
           }`}>
             {tahfizhCount}
           </span>
@@ -329,13 +329,13 @@ export const ViolationsMasterPage: React.FC<ViolationsMasterPageProps> = ({
           className={`w-full min-h-[42px] justify-center px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
             activeDivisionFilter === 'kesantrian'
               ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-              : 'text-slate-600 hover:text-blue-800'
+              : 'text-slate-600 dark:text-slate-300 hover:text-blue-700 dark:hover:text-blue-400 hover:bg-slate-300/40 dark:hover:bg-slate-800/60'
           }`}
         >
           <Building2 className="w-3.5 h-3.5" />
           <span>🏢 Divisi Kesantrian</span>
           <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-            activeDivisionFilter === 'kesantrian' ? 'bg-white/20 text-white' : 'bg-slate-300 text-slate-700'
+            activeDivisionFilter === 'kesantrian' ? 'bg-white/20 text-white' : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
           }`}>
             {kesantrianCount}
           </span>

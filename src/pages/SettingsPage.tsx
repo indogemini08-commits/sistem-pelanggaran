@@ -293,7 +293,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       </div>
 
       {/* Tabs Switcher */}
-      <div className="flex items-center gap-2 p-1.5 bg-slate-200/70 rounded-2xl max-w-xl border border-slate-200/80">
+      <div className="flex items-center gap-2 p-1.5 bg-slate-200/70 dark:bg-slate-900/80 rounded-2xl max-w-xl border border-slate-200/80 dark:border-slate-800">
         <button
           onClick={() => {
             setActiveSubTab('school');
@@ -302,8 +302,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           }}
           className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 rounded-xl transition-all ${
             activeSubTab === 'school'
-              ? 'bg-white text-brand-700 shadow-sm'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+              ? 'bg-white dark:bg-slate-800 text-brand-700 dark:text-brand-300 shadow-sm'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
           }`}
         >
           <Building className="w-4 h-4" />
@@ -318,8 +318,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           }}
           className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 rounded-xl transition-all ${
             activeSubTab === 'thresholds'
-              ? 'bg-white text-brand-700 shadow-sm'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+              ? 'bg-white dark:bg-slate-800 text-brand-700 dark:text-brand-300 shadow-sm'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
           }`}
         >
           <Sliders className="w-4 h-4" />
@@ -335,8 +335,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           }}
           className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 rounded-xl transition-all ${
             activeSubTab === 'sync'
-              ? 'bg-white text-brand-700 shadow-sm'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+              ? 'bg-white dark:bg-slate-800 text-brand-700 dark:text-brand-300 shadow-sm'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
           }`}
         >
           <Cloud className="w-4 h-4" />

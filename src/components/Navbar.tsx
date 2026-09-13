@@ -91,31 +91,31 @@ export const Navbar: React.FC<NavbarProps> = ({
     switch (role) {
       case 'admin':
         return (
-          <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+          <span className="bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-700/70 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
             Admin
           </span>
         );
       case 'coordinator':
         return (
-          <span className="bg-blue-100 text-blue-800 border border-blue-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+          <span className="bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-700/70 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
             Koordinator Tahfizh
           </span>
         );
       case 'kepala_kesantrian':
         return (
-          <span className="bg-indigo-100 text-indigo-800 border border-indigo-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+          <span className="bg-indigo-100 text-indigo-800 border border-indigo-300 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-700/70 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
             Kepala Kesantrian
           </span>
         );
       case 'teacher':
         return (
-          <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+          <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-700/70 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
             Muhafizh
           </span>
         );
       case 'guru':
         return (
-          <span className="bg-teal-100 text-teal-800 border border-teal-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+          <span className="bg-teal-100 text-teal-800 border border-teal-300 dark:bg-teal-950/70 dark:text-teal-300 dark:border-teal-700/70 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
             Guru
           </span>
         );
@@ -125,13 +125,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-20 h-16 bg-white/95 backdrop-blur-md border-b border-slate-200/90 px-4 sm:px-6 lg:px-8 flex items-center justify-between shadow-xs">
+    <header className="sticky top-0 z-20 h-16 bg-white/95 dark:bg-[#0c162b]/95 backdrop-blur-md border-b border-slate-200/90 dark:border-slate-800/90 px-4 sm:px-6 lg:px-8 flex items-center justify-between shadow-xs transition-colors duration-200">
       {/* Left: Mobile Toggle & Desktop Breadcrumb */}
       <div className="flex items-center gap-3 sm:gap-4">
         {/* Mobile Hamburger Menu */}
         <button
           onClick={onToggleSidebar}
-          className="lg:hidden p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-colors"
+          className="lg:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-700 transition-colors"
           aria-label="Buka Menu"
         >
           <Menu className="w-5 h-5" />
@@ -152,21 +152,21 @@ export const Navbar: React.FC<NavbarProps> = ({
               }}
             />
           </div>
-          <span className="text-sm font-black text-slate-900 truncate">
+          <span className="text-sm font-black text-slate-900 dark:text-white truncate">
             {settings?.app_name || 'Poin Halaqah'}
           </span>
         </div>
 
         {/* Desktop Active Section Title with Icon */}
         <div className="hidden lg:flex items-center gap-2.5">
-          <div className="p-2 rounded-xl bg-brand-50 text-brand-600 border border-brand-100">
+          <div className="p-2 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 border border-brand-100 dark:border-brand-800/60">
             <TabIcon className="w-4 h-4" />
           </div>
           <div>
-            <h1 className="text-sm font-extrabold text-slate-900 tracking-tight">
+            <h1 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight">
               {activeTabMeta.label}
             </h1>
-            <p className="text-[11px] text-slate-400 font-medium">
+            <p className="text-[11px] text-slate-400 dark:text-slate-400 font-medium">
               {settings?.school_name || "Pesantren Tahfizh Al-Qur'an"}
             </p>
           </div>
@@ -176,8 +176,8 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Right: Academic Year Pill, Quick Action, Profile & Logout */}
       <div className="flex items-center gap-2 sm:gap-3.5">
         {/* Academic Year Pill */}
-        <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100/90 border border-slate-200 text-xs text-slate-700 font-semibold">
-          <Calendar className="w-3.5 h-3.5 text-brand-600" />
+        <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100/90 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 text-xs text-slate-700 dark:text-slate-200 font-semibold shadow-xs">
+          <Calendar className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
           <span>T.A. {settings?.current_academic_year || '2025/2026'}</span>
         </div>
 
@@ -210,7 +210,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* User Meta & Logout */}
         <div className="flex items-center gap-2 sm:gap-3 pl-2 sm:pl-3 border-l border-slate-200 dark:border-slate-800">
           <div className="text-right hidden sm:block">
-            <p className="text-xs font-bold text-slate-900 truncate max-w-[150px]">
+            <p className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[150px]">
               {currentUser?.name || 'Pengguna'}
             </p>
             <div className="mt-0.5">{getRoleBadge(currentUser?.role)}</div>
@@ -225,7 +225,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             onClick={onLogout}
             title="Keluar / Logout"
-            className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all"
+            className="p-2 rounded-xl text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-transparent hover:border-rose-200 dark:hover:border-rose-900/50 transition-all"
             aria-label="Logout"
           >
             <LogOut className="w-4 h-4" />

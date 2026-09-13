@@ -343,13 +343,13 @@ export const PositiveRecordsPage: React.FC<PositiveRecordsPageProps> = ({
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-3.5 sm:p-5 space-y-3 sm:space-y-4">
         {/* Division Selector & Reset Filter */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-100 pb-3">
-          <div className="grid grid-cols-3 sm:flex p-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold w-full sm:w-auto gap-1">
+          <div className="grid grid-cols-3 sm:flex p-1 rounded-xl bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-xs font-bold w-full sm:w-auto gap-1">
             <button
               onClick={() => setFilterDivision('all')}
               className={`py-2 px-2 sm:px-3.5 sm:py-1.5 rounded-lg text-center transition-all ${
                 filterDivision === 'all'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
               }`}
             >
               Semua
@@ -358,22 +358,22 @@ export const PositiveRecordsPage: React.FC<PositiveRecordsPageProps> = ({
               onClick={() => setFilterDivision('tahfizh')}
               className={`py-2 px-2 sm:px-3.5 sm:py-1.5 rounded-lg flex items-center justify-center gap-1 text-center transition-all ${
                 filterDivision === 'tahfizh'
-                  ? 'bg-white text-emerald-800 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'bg-white dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
               }`}
             >
-              <BookOpen className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <BookOpen className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span>Tahfizh</span>
             </button>
             <button
               onClick={() => setFilterDivision('kesantrian')}
               className={`py-2 px-2 sm:px-3.5 sm:py-1.5 rounded-lg flex items-center justify-center gap-1 text-center transition-all ${
                 filterDivision === 'kesantrian'
-                  ? 'bg-white text-emerald-800 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'bg-white dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
               }`}
             >
-              <Building2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <Building2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span>Kesantrian</span>
             </button>
           </div>

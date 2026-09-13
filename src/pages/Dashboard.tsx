@@ -303,13 +303,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       {/* Division View Switcher */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 p-1.5 bg-slate-200/70 rounded-2xl w-full sm:w-fit">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 p-1.5 bg-slate-200/80 dark:bg-slate-900/90 border border-slate-300/70 dark:border-slate-800 rounded-2xl w-full sm:w-fit shadow-xs">
         <button
           onClick={() => setDashboardDivision('all')}
           className={`w-full min-h-[42px] justify-center px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
             dashboardDivision === 'all'
-              ? 'bg-white text-slate-900 shadow-md ring-1 ring-slate-300'
-              : 'text-slate-600 hover:text-slate-900'
+              ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-md ring-1 ring-slate-300 dark:ring-slate-700'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-300/40 dark:hover:bg-slate-800/60'
           }`}
         >
           <span>🌐 Ringkasan Terpadu</span>
@@ -320,7 +320,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           className={`w-full min-h-[42px] justify-center px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
             dashboardDivision === 'tahfizh'
               ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
-              : 'text-slate-600 hover:text-emerald-800'
+              : 'text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-slate-300/40 dark:hover:bg-slate-800/60'
           }`}
         >
           <BookOpen className="w-3.5 h-3.5" />
@@ -332,7 +332,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           className={`w-full min-h-[42px] justify-center px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
             dashboardDivision === 'kesantrian'
               ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-              : 'text-slate-600 hover:text-blue-800'
+              : 'text-slate-600 dark:text-slate-300 hover:text-blue-700 dark:hover:text-blue-400 hover:bg-slate-300/40 dark:hover:bg-slate-800/60'
           }`}
         >
           <Building2 className="w-3.5 h-3.5" />
@@ -343,95 +343,96 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Metric Cards (Ringkasan Indikator Terpadu) */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-4">
         {/* Total Santri */}
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-soft">
-          <div className="flex items-center gap-1.5 sm:gap-2 text-slate-500 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-1">
-            <GraduationCap className="w-4 h-4 text-brand-600 shrink-0" />
+        <div className="bg-white dark:bg-slate-800/90 p-3.5 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-soft">
+          <div className="flex items-center gap-1.5 sm:gap-2 text-slate-500 dark:text-slate-400 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-1">
+            <GraduationCap className="w-4 h-4 text-brand-600 dark:text-brand-400 shrink-0" />
             <span className="truncate">Total Santri</span>
           </div>
-          <p className="text-xl sm:text-3xl font-black text-slate-900">
+          <p className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white">
             {stats?.summary.totalStudents || 0}
           </p>
-          <span className="text-[10px] sm:text-[11px] text-emerald-600 font-medium block truncate">Santri aktif pondok</span>
+          <span className="text-[10px] sm:text-[11px] text-emerald-600 dark:text-emerald-400 font-medium block truncate">Santri aktif pondok</span>
         </div>
 
         {/* Total Poin Bersih Terpadu */}
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-soft">
-          <div className="flex items-center gap-1.5 sm:gap-2 text-slate-500 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-1">
-            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+        <div className="bg-white dark:bg-slate-800/90 p-3.5 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-soft">
+          <div className="flex items-center gap-1.5 sm:gap-2 text-slate-500 dark:text-slate-400 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-1">
+            <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
             <span className="truncate">Poin Netto ({dashboardDivision === 'kesantrian' ? 'Kesantrian' : dashboardDivision === 'tahfizh' ? 'Tahfizh' : 'Terpadu'})</span>
           </div>
-          <p className="text-xl sm:text-3xl font-black text-rose-600">
+          <p className="text-xl sm:text-3xl font-black text-rose-600 dark:text-rose-400">
             {stats?.summary.netTotalPoints !== undefined ? stats.summary.netTotalPoints : (stats?.summary.totalPoints || 0)}
           </p>
-          <span className="text-[10px] sm:text-[11px] text-slate-500 font-medium block truncate">
+          <span className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 font-medium block truncate">
             {stats?.summary.totalRecords || 0} pelanggaran aktif
           </span>
         </div>
 
         {/* Total Pengurangan Kebaikan */}
-        <div className="bg-emerald-50/80 p-3.5 sm:p-5 rounded-2xl border border-emerald-200 shadow-soft">
-          <div className="flex items-center gap-1.5 sm:gap-2 text-emerald-800 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-1">
-            <Award className="w-4 h-4 text-emerald-600 shrink-0" />
+        <div className="bg-emerald-50/80 dark:bg-emerald-950/40 p-3.5 sm:p-5 rounded-2xl border border-emerald-200 dark:border-emerald-800/50 shadow-soft">
+          <div className="flex items-center gap-1.5 sm:gap-2 text-emerald-800 dark:text-emerald-300 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-1">
+            <Award className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span className="truncate">Poin Dikurangi</span>
           </div>
-          <p className="text-xl sm:text-3xl font-black text-emerald-700">
+          <p className="text-xl sm:text-3xl font-black text-emerald-700 dark:text-emerald-300">
             -{stats?.summary.totalPointsDeducted || 0}
           </p>
-          <span className="text-[10px] sm:text-[11px] text-emerald-600 font-semibold block truncate">
+          <span className="text-[10px] sm:text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold block truncate">
             {stats?.summary.totalPositiveRecords || 0} kebaikan / reward
           </span>
         </div>
 
         {/* Kontribusi Divisi Tahfizh */}
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-soft">
-          <div className="flex items-center gap-1.5 sm:gap-2 text-emerald-800 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-1">
-            <BookOpen className="w-4 h-4 text-emerald-600 shrink-0" />
+        <div className="bg-white dark:bg-slate-800/90 p-3.5 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-soft">
+          <div className="flex items-center gap-1.5 sm:gap-2 text-emerald-800 dark:text-emerald-300 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-1">
+            <BookOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span className="truncate">Divisi Tahfizh</span>
           </div>
-          <p className="text-xl sm:text-3xl font-black text-emerald-700">
+          <p className="text-xl sm:text-3xl font-black text-emerald-700 dark:text-emerald-400">
             {stats?.summary.tahfizhTotalPoints || 0}
           </p>
-          <span className="text-[10px] sm:text-[11px] text-slate-500 font-medium block truncate">
+          <span className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 font-medium block truncate">
             Ded: -{stats?.summary.tahfizhDeductedPoints || 0} • {stats?.summary.tahfizhRecordsCount || 0} kjdn
           </span>
         </div>
 
         {/* Kontribusi Divisi Kesantrian */}
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-soft col-span-2 sm:col-span-1">
-          <div className="flex items-center gap-1.5 sm:gap-2 text-blue-800 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-1">
-            <Building2 className="w-4 h-4 text-blue-600 shrink-0" />
+        <div className="bg-white dark:bg-slate-800/90 p-3.5 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-soft col-span-2 sm:col-span-1">
+          <div className="flex items-center gap-1.5 sm:gap-2 text-blue-800 dark:text-blue-300 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-1">
+            <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
             <span className="truncate">Divisi Kesantrian</span>
           </div>
-          <p className="text-xl sm:text-3xl font-black text-blue-700">
+          <p className="text-xl sm:text-3xl font-black text-blue-700 dark:text-blue-400">
             {stats?.summary.kesantrianTotalPoints || 0}
           </p>
-          <span className="text-[10px] sm:text-[11px] text-slate-500 font-medium block truncate">
+          <span className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 font-medium block truncate">
             Ded: -{stats?.summary.kesantrianDeductedPoints || 0} • {stats?.summary.kesantrianRecordsCount || 0} kjdn
           </span>
         </div>
       </div>
 
       {/* Grid: Top 10 Santri & Kategori */}
+      {/* Grid: Top 10 Santri & Kategori */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Top 10 Santri Poin Tertinggi */}
-        <div className="lg:col-span-2 bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-soft overflow-hidden">
-          <div className="p-4 sm:p-6 border-b border-slate-100 flex items-center justify-between gap-2">
+        <div className="lg:col-span-2 bg-white dark:bg-slate-800/90 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-700/80 shadow-soft overflow-hidden">
+          <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-slate-700/70 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 sm:gap-2.5">
-              <div className="p-2 rounded-xl bg-rose-50 text-rose-600 shrink-0">
+              <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 shrink-0">
                 <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
               <div>
-                <h2 className="text-sm sm:text-lg font-bold text-slate-900">
+                <h2 className="text-sm sm:text-lg font-bold text-slate-900 dark:text-white">
                   10 Santri Poin Tertinggi
                 </h2>
-                <p className="text-[11px] sm:text-xs text-slate-500">
+                <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
                   Akumulasi terpadu Tahfizh & Kesantrian
                 </p>
               </div>
             </div>
             <button
               onClick={() => onSelectTab('students')}
-              className="text-xs font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1 min-h-[36px] px-2"
+              className="text-xs font-bold text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 flex items-center gap-1 min-h-[36px] px-2"
             >
               <span>Semua Santri</span>
               <ChevronRight className="w-4 h-4" />
@@ -439,35 +440,35 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {/* Mobile Cards List for Top 10 */}
-          <div className="block md:hidden divide-y divide-slate-100">
+          <div className="block md:hidden divide-y divide-slate-100 dark:divide-slate-700/60">
             {(stats?.topStudents || []).map((s, idx) => (
               <div
                 key={s.id}
                 onClick={() => handleStudentClick(s.id)}
-                className="p-3.5 hover:bg-slate-50 active:bg-slate-100 transition-colors cursor-pointer space-y-2"
+                className="p-3.5 hover:bg-slate-50 dark:hover:bg-slate-700/40 active:bg-slate-100 dark:active:bg-slate-700/60 transition-colors cursor-pointer space-y-2"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 font-bold text-xs flex items-center justify-center shrink-0">
+                    <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200 font-bold text-xs flex items-center justify-center shrink-0">
                       {idx + 1}
                     </span>
                     <div className="min-w-0">
-                      <p className="font-bold text-slate-900 text-sm truncate">{s.name}</p>
-                      <p className="text-[11px] text-slate-400">NIS: {s.student_number} • Kelas {s.class}</p>
+                      <p className="font-bold text-slate-900 dark:text-white text-sm truncate">{s.name}</p>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-400">NIS: {s.student_number} • Kelas {s.class}</p>
                     </div>
                   </div>
-                  <span className="shrink-0 px-2.5 py-1 rounded-xl text-xs font-black bg-rose-50 text-rose-700 border border-rose-200">
+                  <span className="shrink-0 px-2.5 py-1 rounded-xl text-xs font-black bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60">
                     {s.total_points} Poin
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-50">
-                  <span className="text-slate-500 truncate">{s.halaqah_name || 'Tanpa Halaqah'}</span>
+                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-50 dark:border-slate-700/40">
+                  <span className="text-slate-500 dark:text-slate-300 truncate">{s.halaqah_name || 'Tanpa Halaqah'}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-bold">
                       T: {s.tahfizh_points || 0}
                     </span>
-                    <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-bold">
+                    <span className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 font-bold">
                       K: {s.kesantrian_points || 0}
                     </span>
                   </div>
@@ -475,16 +476,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             ))}
             {(!stats?.topStudents || stats.topStudents.length === 0) && (
-              <div className="p-6 text-center text-slate-400 text-xs">
+              <div className="p-6 text-center text-slate-400 dark:text-slate-400 text-xs">
                 Belum ada santri dengan catatan poin pelanggaran.
               </div>
             )}
           </div>
 
           {/* Desktop Table for Top 10 */}
-          <div className="hidden md:block divide-y divide-slate-100 overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left text-xs sm:text-sm">
-              <thead className="bg-slate-50 text-slate-500 font-semibold uppercase text-[11px]">
+              <thead className="bg-slate-50 dark:bg-slate-900/80 text-slate-600 dark:text-slate-300 font-semibold uppercase text-[11px] border-b border-slate-200 dark:border-slate-700">
                 <tr>
                   <th className="px-4 py-3 text-center w-10">#</th>
                   <th className="px-4 py-3">Nama Santri</th>
@@ -494,36 +495,36 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <th className="px-4 py-3 text-center">Total Poin</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
                 {(stats?.topStudents || []).map((s, idx) => (
                   <tr
                     key={s.id}
                     onClick={() => handleStudentClick(s.id)}
-                    className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                    className="hover:bg-slate-50/80 dark:hover:bg-slate-700/30 transition-colors cursor-pointer"
                   >
-                    <td className="px-4 py-3 text-center font-bold text-slate-400">
+                    <td className="px-4 py-3 text-center font-bold text-slate-400 dark:text-slate-400">
                       {idx + 1}
                     </td>
                     <td className="px-4 py-3">
-                      <p className="font-bold text-slate-900 hover:text-brand-600 transition-colors">
+                      <p className="font-bold text-slate-900 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition-colors">
                         {s.name}
                       </p>
-                      <p className="text-[11px] text-slate-400 font-mono">NIS: {s.student_number}</p>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-400 font-mono">NIS: {s.student_number}</p>
                     </td>
-                    <td className="px-4 py-3 font-medium text-slate-600">{s.class}</td>
-                    <td className="px-4 py-3 text-slate-600">{s.halaqah_name || '-'}</td>
+                    <td className="px-4 py-3 font-medium text-slate-600 dark:text-slate-200">{s.class}</td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-200">{s.halaqah_name || '-'}</td>
                     <td className="px-4 py-3 text-center">
                       <div className="inline-flex items-center gap-1.5 text-[11px]">
-                        <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
+                        <span className="px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-bold">
                           T: {s.tahfizh_points || 0}
                         </span>
-                        <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-bold">
+                        <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 font-bold">
                           K: {s.kesantrian_points || 0}
                         </span>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className="inline-block px-3 py-1 rounded-xl text-xs font-black bg-rose-50 text-rose-700 border border-rose-200">
+                      <span className="inline-block px-3 py-1 rounded-xl text-xs font-black bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60">
                         {s.total_points} Poin
                       </span>
                     </td>
@@ -531,7 +532,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 ))}
                 {(!stats?.topStudents || stats.topStudents.length === 0) && (
                   <tr>
-                    <td colSpan={6} className="text-center py-8 text-slate-400">
+                    <td colSpan={6} className="text-center py-8 text-slate-400 dark:text-slate-400">
                       Belum ada santri dengan catatan poin pelanggaran.
                     </td>
                   </tr>
@@ -542,14 +543,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* Pelanggaran per Kategori */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-soft p-5 sm:p-6 space-y-5">
-          <div className="flex items-center gap-2.5 pb-2 border-b border-slate-100">
-            <div className="p-2 rounded-xl bg-brand-50 text-brand-600">
+        <div className="bg-white dark:bg-slate-800/90 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-700/80 shadow-soft p-5 sm:p-6 space-y-5">
+          <div className="flex items-center gap-2.5 pb-2 border-b border-slate-100 dark:border-slate-700/70">
+            <div className="p-2 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400">
               <AlertTriangle className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">Kategori Pelanggaran</h2>
-              <p className="text-xs text-slate-500">Distribusi kejadian per kategori</p>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">Kategori Pelanggaran</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Distribusi kejadian per kategori</p>
             </div>
           </div>
 
@@ -562,19 +563,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
               return (
                 <div key={c.category + (c.division || '')} className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                    <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
                       <span>{c.category}</span>
                       <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
-                        isKesantrian ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+                        isKesantrian
+                          ? 'bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300'
+                          : 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300'
                       }`}>
                         {isKesantrian ? 'Kesantrian' : 'Tahfizh'}
                       </span>
                     </span>
-                    <span className="text-slate-500">
-                      <strong className="text-slate-900">{c.count}</strong>x ({c.points} Poin)
+                    <span className="text-slate-500 dark:text-slate-400">
+                      <strong className="text-slate-900 dark:text-white">{c.count}</strong>x ({c.points} Poin)
                     </span>
                   </div>
-                  <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full ${
                         isKesantrian
@@ -588,17 +591,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
               );
             })}
             {(!stats?.byCategory || stats.byCategory.length === 0) && (
-              <p className="text-xs text-slate-400 text-center py-4">Belum ada data kategori</p>
+              <p className="text-xs text-slate-400 dark:text-slate-400 text-center py-4">Belum ada data kategori</p>
             )}
           </div>
 
           {/* Quick summary reminder */}
-          <div className="pt-4 border-t border-slate-100 bg-slate-50 p-3 rounded-2xl border border-slate-200/60">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-700 mb-1">
-              <ShieldAlert className="w-4 h-4 text-brand-600" />
+          <div className="pt-4 border-t border-slate-100 dark:border-slate-700/60 bg-slate-50 dark:bg-slate-900/70 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
+              <ShieldAlert className="w-4 h-4 text-brand-600 dark:text-brand-400" />
               <span>Sistem Poin Terintegrasi</span>
             </div>
-            <p className="text-[11px] text-slate-500 leading-relaxed">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
               Santri mendapatkan akumulasi poin dari pelanggaran halaqah dan kesantrian dengan ambang batas sanksi (SP / Tindakan Lanjut) yang seragam.
             </p>
           </div>

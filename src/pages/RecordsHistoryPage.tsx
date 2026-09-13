@@ -367,33 +367,33 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
       </div>
 
       {/* Division Tabs Switcher: Responsive full-width grid on mobile */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 p-1 rounded-xl bg-slate-200/70 text-xs font-bold w-full sm:w-fit gap-1">
+      <div className="grid grid-cols-1 sm:grid-cols-3 p-1.5 rounded-2xl bg-slate-200/70 dark:bg-slate-900/80 border border-slate-300/60 dark:border-slate-800 text-xs font-bold w-full sm:w-fit gap-1.5 shadow-xs">
         <button
           onClick={() => setFilterDivision('all')}
-          className={`py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-2 ${
+          className={`py-2 px-3 rounded-xl transition-all flex items-center justify-center gap-2 ${
             filterDivision === 'all'
-              ? 'bg-white text-slate-900 shadow-md ring-1 ring-slate-300'
-              : 'text-slate-600 hover:text-slate-900'
+              ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-md ring-1 ring-slate-300 dark:ring-slate-700'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-300/40 dark:hover:bg-slate-800/60'
           }`}
         >
           <span>🌐 Rekap Terpadu (Semua)</span>
-          <span className="px-1.5 py-0.2 rounded-full bg-slate-100 text-[10px] text-slate-600 font-extrabold border border-slate-200">
+          <span className="px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-slate-700 text-[10px] text-slate-600 dark:text-slate-200 font-extrabold border border-slate-200 dark:border-slate-600">
             {records.length}
           </span>
         </button>
 
         <button
           onClick={() => setFilterDivision('tahfizh')}
-          className={`py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-2 ${
+          className={`py-2 px-3 rounded-xl transition-all flex items-center justify-center gap-2 ${
             filterDivision === 'tahfizh'
               ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
-              : 'text-slate-600 hover:text-emerald-800'
+              : 'text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-slate-300/40 dark:hover:bg-slate-800/60'
           }`}
         >
           <BookOpen className="w-3.5 h-3.5" />
           <span>🕌 Pelanggaran Tahfizh</span>
           <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-            filterDivision === 'tahfizh' ? 'bg-white/20 text-white' : 'bg-slate-300 text-slate-700'
+            filterDivision === 'tahfizh' ? 'bg-white/20 text-white' : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
           }`}>
             {tahfizhRecords.length}
           </span>
@@ -401,16 +401,16 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
 
         <button
           onClick={() => setFilterDivision('kesantrian')}
-          className={`py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-2 ${
+          className={`py-2 px-3 rounded-xl transition-all flex items-center justify-center gap-2 ${
             filterDivision === 'kesantrian'
               ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-              : 'text-slate-600 hover:text-blue-800'
+              : 'text-slate-600 dark:text-slate-300 hover:text-blue-700 dark:hover:text-blue-400 hover:bg-slate-300/40 dark:hover:bg-slate-800/60'
           }`}
         >
           <Building2 className="w-3.5 h-3.5" />
           <span>🏢 Pelanggaran Kesantrian</span>
           <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-            filterDivision === 'kesantrian' ? 'bg-white/20 text-white' : 'bg-slate-300 text-slate-700'
+            filterDivision === 'kesantrian' ? 'bg-white/20 text-white' : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
           }`}>
             {kesantrianRecords.length}
           </span>
