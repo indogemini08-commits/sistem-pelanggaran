@@ -80,10 +80,11 @@ function runMigrations(database: Database) {
           password_hash TEXT NOT NULL,
           role TEXT NOT NULL CHECK(role IN ('admin', 'coordinator', 'kepala_kesantrian', 'teacher', 'guru')),
           status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
+          must_change_password INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      database.run("INSERT INTO users_new SELECT * FROM users;");
+      database.run("INSERT INTO users_new (id, name, email, password_hash, role, status, created_at) SELECT id, name, email, password_hash, role, status, created_at FROM users;");
       database.run("DROP TABLE users;");
       database.run("ALTER TABLE users_new RENAME TO users;");
       database.run("PRAGMA foreign_keys=ON;");
@@ -91,6 +92,20 @@ function runMigrations(database: Database) {
     }
   } catch (e: any) {
     console.error('Peringatan migrasi skema tabel users:', e?.message || e);
+  }
+
+  try {
+    database.run("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0;");
+  } catch (e) {
+    // Column already exists
+  }
+
+  try {
+    // Role 'guru' (Guru Pengajar) does not hold or supervise halaqahs
+    database.run("UPDATE halaqah SET teacher_id = NULL WHERE teacher_id IN (SELECT t.id FROM teachers t JOIN users u ON u.id = t.user_id WHERE u.role = 'guru');");
+    database.run("DELETE FROM teachers WHERE user_id IN (SELECT id FROM users WHERE role = 'guru');");
+  } catch (e) {
+    // ignore
   }
 
   try {

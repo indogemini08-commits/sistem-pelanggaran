@@ -6,6 +6,9 @@ export interface User {
   email: string;
   role: UserRole;
   status: 'active' | 'inactive';
+  password?: string;
+  mustChangePassword?: boolean;
+  must_change_password?: number | boolean;
   created_at?: string;
   teacherId?: string | null;
   assignedHalaqahs?: Halaqah[];

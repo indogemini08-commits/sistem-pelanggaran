@@ -7,7 +7,8 @@ const router = Router();
 router.get('/', (req: Request, res: Response) => {
   try {
     const users = query<any>(`
-      SELECT u.id, u.name, u.email, u.role, u.status, u.created_at,
+      SELECT u.id, u.name, u.email, u.password_hash as password, u.must_change_password,
+             u.role, u.status, u.created_at,
              t.id as teacher_id, t.phone as teacher_phone
       FROM users u
       LEFT JOIN teachers t ON t.user_id = u.id
@@ -35,13 +36,13 @@ router.post('/', async (req: Request, res: Response) => {
 
     const userId = 'usr_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
     run(
-      `INSERT INTO users (id, name, email, password_hash, role, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+      `INSERT INTO users (id, name, email, password_hash, role, status, must_change_password, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now', 'localtime'))`,
       [userId, name.trim(), cleanEmail, password, role, status]
     );
 
-    // If role is teacher or guru, also create or link teacher record
-    if (role === 'teacher' || role === 'guru') {
+    // If role is teacher (muhafizh), also create or link teacher record. Role 'guru' (Guru Pengajar) does NOT hold halaqah.
+    if (role === 'teacher') {
       const teacherId = 'tch_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
       run(
         `INSERT INTO teachers (id, user_id, name, phone, status)
@@ -68,6 +69,8 @@ router.post('/', async (req: Request, res: Response) => {
         id: userId,
         name: name.trim(),
         email: cleanEmail,
+        password,
+        must_change_password: 1,
         role,
         status,
         created_at: new Date().toISOString(),
@@ -82,7 +85,7 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, email, password, role, status, phone, actorName = 'Admin' } = req.body;
+    const { name, email, password, role, status, phone, must_change_password, actorName = 'Admin' } = req.body;
 
     const oldUser = get<any>('SELECT * FROM users WHERE id = ?', [id]);
     if (!oldUser) return res.status(404).json({ error: 'Pengguna tidak ditemukan' });
@@ -93,20 +96,29 @@ router.put('/:id', async (req: Request, res: Response) => {
       if (conflict) return res.status(400).json({ error: 'Email / Username sudah digunakan pengguna lain' });
     }
 
-    const updatedPass = password ? password : oldUser.password_hash;
+    const updatedPass = password !== undefined && password !== '' ? password : oldUser.password_hash;
     const updatedRole = role || oldUser.role;
     const updatedStatus = status || oldUser.status;
     const updatedName = name ? name.trim() : oldUser.name;
+    const updatedMustChange = must_change_password !== undefined 
+      ? (must_change_password ? 1 : 0) 
+      : (oldUser.must_change_password || 0);
 
     run(
       `UPDATE users
-       SET name = ?, email = ?, password_hash = ?, role = ?, status = ?
+       SET name = ?, email = ?, password_hash = ?, role = ?, status = ?, must_change_password = ?
        WHERE id = ?`,
-      [updatedName, cleanEmail, updatedPass, updatedRole, updatedStatus, id]
+      [updatedName, cleanEmail, updatedPass, updatedRole, updatedStatus, updatedMustChange, id]
     );
 
-    // Update teacher phone/name if linked
-    if (updatedRole === 'teacher' || updatedRole === 'guru') {
+    // If role is guru, ensure no teacher/halaqah record is held
+    if (updatedRole === 'guru') {
+      const existingTeacher = get<any>('SELECT id FROM teachers WHERE user_id = ?', [id]);
+      if (existingTeacher) {
+        run('UPDATE halaqah SET teacher_id = NULL WHERE teacher_id = ?', [existingTeacher.id]);
+        run('DELETE FROM teachers WHERE id = ?', [existingTeacher.id]);
+      }
+    } else if (updatedRole === 'teacher') {
       const existingTeacher = get<any>('SELECT id FROM teachers WHERE user_id = ?', [id]);
       if (existingTeacher) {
         run('UPDATE teachers SET name = ?, phone = ? WHERE id = ?', [updatedName, phone || '', existingTeacher.id]);
@@ -134,6 +146,8 @@ router.put('/:id', async (req: Request, res: Response) => {
         id,
         name: updatedName,
         email: cleanEmail,
+        password: updatedPass,
+        must_change_password: updatedMustChange,
         role: updatedRole,
         status: updatedStatus,
         created_at: oldUser.created_at,

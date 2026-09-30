@@ -154,8 +154,10 @@ export const api = {
         id: 'usr_admin_imbs',
         name: 'Admin Utama',
         email: 'imbs@aldri',
+        password: 'admin112',
         role: 'admin',
         status: 'active',
+        mustChangePassword: false,
         created_at: '2026-09-12',
       };
 

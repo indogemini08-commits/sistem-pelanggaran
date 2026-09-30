@@ -156,14 +156,6 @@ export function seedNewRolesIfEmpty() {
       `INSERT INTO users (id, name, email, password_hash, role, status, created_at)
        VALUES ('usr_guru', 'Ustadz Herman, S.Pd (Guru Pengajar)', 'guru@pesantren.id', 'guru123', 'guru', 'active', datetime('now', 'localtime'))`
     );
-    // Link teacher entry for guru
-    const existingTch = query<{ id: string }>("SELECT id FROM teachers WHERE user_id = 'usr_guru'")[0];
-    if (!existingTch) {
-      run(
-        `INSERT INTO teachers (id, user_id, name, phone, status)
-         VALUES ('tch_herman', 'usr_guru', 'Ustadz Herman, S.Pd', '0812-3456-7804', 'active')`
-      );
-    }
     console.log('Seeded demo user: Guru (guru@pesantren.id / guru123)');
   }
 }

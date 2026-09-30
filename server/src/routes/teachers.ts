@@ -11,6 +11,7 @@ router.get('/', (req: Request, res: Response) => {
              u.email, u.role
       FROM teachers t
       LEFT JOIN users u ON u.id = t.user_id
+      WHERE (u.role IS NULL OR u.role != 'guru')
       ORDER BY t.name ASC
     `);
 

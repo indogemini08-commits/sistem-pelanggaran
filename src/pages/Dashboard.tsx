@@ -18,6 +18,8 @@ import {
   Building2,
   ShieldAlert,
   Award,
+  Search,
+  Filter,
 } from 'lucide-react';
 import { User, DashboardStats, Halaqah, Student } from '../types';
 import { api } from '../services/api';
@@ -39,12 +41,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onSelectTab,
   onSelectStudent,
 }) => {
-  const isTeacher = currentUser?.role === 'teacher' || currentUser?.role === 'guru';
+  const isMuhafizh = currentUser?.role === 'teacher';
+  const isGuru = currentUser?.role === 'guru';
 
   const [dashboardDivision, setDashboardDivision] = useState<'all' | 'tahfizh' | 'kesantrian'>('all');
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [teacherHalaqahs, setTeacherHalaqahs] = useState<Halaqah[]>([]);
   const [teacherStudents, setTeacherStudents] = useState<Student[]>([]);
+  const [allStudents, setAllStudents] = useState<Student[]>([]);
+  const [guruStudentSearch, setGuruStudentSearch] = useState<string>('');
+  const [guruClassFilter, setGuruClassFilter] = useState<string>('all');
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
@@ -56,16 +62,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
         setStats(s);
       }).catch(console.error);
 
-      if (isTeacher) {
+      if (isMuhafizh) {
         api.halaqah.list().then(async (allHalaqahs) => {
           const myHalaqahs = allHalaqahs.filter(
-            (h) => h.teacher_id === currentUser?.teacherId || h.teacher_name?.includes(currentUser?.name || '---')
+            (h) => (currentUser?.teacherId && h.teacher_id === currentUser.teacherId) ||
+                   (currentUser?.name && h.teacher_name?.toLowerCase().includes(currentUser.name.toLowerCase()))
           );
-          const targetHalaqah = myHalaqahs.length > 0 ? myHalaqahs[0] : allHalaqahs[0];
-          if (targetHalaqah) {
-            const sList = await api.halaqah.getStudents(targetHalaqah.id);
+          setTeacherHalaqahs(myHalaqahs);
+          if (myHalaqahs.length > 0) {
+            const sList = await api.halaqah.getStudents(myHalaqahs[0].id);
             setTeacherStudents(sList);
+          } else {
+            setTeacherStudents([]);
           }
+        }).catch(console.error);
+      } else if (isGuru) {
+        api.students.list().then((sList) => {
+          setAllStudents(sList.filter((st) => st.status === 'active'));
         }).catch(console.error);
       }
     };
@@ -86,7 +99,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       window.removeEventListener('focus', handleDataChanged);
       clearInterval(interval);
     };
-  }, [currentUser, dashboardDivision, isTeacher]);
+  }, [currentUser, dashboardDivision, isMuhafizh, isGuru]);
 
   const loadDashboardData = async () => {
     setLoading(true);
@@ -94,21 +107,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
       const s = await api.records.stats(dashboardDivision);
       setStats(s);
 
-      if (isTeacher) {
+      if (isMuhafizh) {
         const allHalaqahs = await api.halaqah.list();
         const myHalaqahs = allHalaqahs.filter(
-          (h) => h.teacher_id === currentUser?.teacherId || h.teacher_name?.includes(currentUser?.name || '---')
+          (h) => (currentUser?.teacherId && h.teacher_id === currentUser.teacherId) ||
+                 (currentUser?.name && h.teacher_name?.toLowerCase().includes(currentUser.name.toLowerCase()))
         );
-        setTeacherHalaqahs(myHalaqahs.length > 0 ? myHalaqahs : allHalaqahs.slice(0, 1));
+        setTeacherHalaqahs(myHalaqahs);
 
-        // Fetch students in my halaqah
+        // Fetch students in my halaqah (strictly without fallback)
         if (myHalaqahs.length > 0) {
           const sList = await api.halaqah.getStudents(myHalaqahs[0].id);
           setTeacherStudents(sList);
-        } else if (allHalaqahs.length > 0) {
-          const sList = await api.halaqah.getStudents(allHalaqahs[0].id);
-          setTeacherStudents(sList);
+        } else {
+          setTeacherStudents([]);
         }
+      } else if (isGuru) {
+        const sList = await api.students.list();
+        setAllStudents(sList.filter((st) => st.status === 'active'));
       }
     } catch (err) {
       console.error('Error loading dashboard:', err);
@@ -137,9 +153,202 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }
 
   // ==========================================
+  // VIEW: DASHBOARD GURU PENGAJAR
+  // ==========================================
+  if (isGuru) {
+    const filteredGuruStudents = allStudents.filter((st) => {
+      const matchSearch =
+        guruStudentSearch === '' ||
+        st.name.toLowerCase().includes(guruStudentSearch.toLowerCase()) ||
+        st.student_number.toLowerCase().includes(guruStudentSearch.toLowerCase());
+      const matchClass = guruClassFilter === 'all' || st.class === guruClassFilter;
+      return matchSearch && matchClass;
+    });
+
+    const uniqueClasses = Array.from(new Set(allStudents.map((s) => s.class))).sort();
+
+    return (
+      <div className="space-y-6 animate-scale-in">
+        {/* Banner Sapaan Guru Pengajar */}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-teal-950 via-slate-900 to-teal-900 text-white p-6 sm:p-8 shadow-xl border border-teal-800/60">
+          <div className="relative z-10">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/20 backdrop-blur-sm text-xs font-semibold text-teal-200 mb-3 border border-teal-400/30">
+              <Sparkles className="w-3.5 h-3.5 text-teal-300" />
+              <span>Portal Guru Pengajar</span>
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
+              Assalamu'alaikum, {currentUser?.name || 'Ustadz'}
+            </h1>
+            <p className="mt-1 text-sm text-slate-300 max-w-2xl font-light">
+              Pusat monitoring kedisiplinan dan apresiasi santri IMBS. Catat pelanggaran tata tertib dan apresiasi kebaikan santri di kelas maupun lingkungan madrasah.
+            </p>
+
+            {/* BIG PROMINENT ACTION BUTTONS */}
+            <div className="mt-5 sm:mt-6 flex flex-col sm:flex-row gap-2.5 sm:gap-3">
+              <button
+                type="button"
+                onClick={onOpenQuickRecord}
+                className="w-full sm:w-auto px-5 sm:px-7 py-3.5 sm:py-4 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white text-sm sm:text-base font-black rounded-2xl shadow-xl shadow-rose-600/30 transition-all flex items-center justify-center gap-2.5 sm:gap-3 transform active:scale-95 group min-h-[48px] cursor-pointer"
+              >
+                <PlusCircle className="w-5 h-5 text-rose-200 group-hover:rotate-90 transition-transform duration-300 shrink-0" />
+                <span>+ CATAT PELANGGARAN SANTRI</span>
+              </button>
+
+              {onOpenQuickReward && (
+                <button
+                  type="button"
+                  onClick={onOpenQuickReward}
+                  className="w-full sm:w-auto px-5 sm:px-7 py-3.5 sm:py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm sm:text-base font-black rounded-2xl shadow-xl shadow-emerald-600/30 transition-all flex items-center justify-center gap-2.5 sm:gap-3 transform active:scale-95 group min-h-[48px] cursor-pointer"
+                >
+                  <Award className="w-5 h-5 text-emerald-200 group-hover:scale-110 transition-transform duration-200 shrink-0" />
+                  <span>★ CATAT KEBAIKAN SANTRI</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 4 Stat Cards for Guru */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="bg-white dark:bg-[#0f172a] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Total Santri Aktif</span>
+              <div className="p-2 bg-blue-50 dark:bg-blue-950/50 rounded-xl text-blue-600 dark:text-blue-400">
+                <Users className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="mt-3 text-2xl font-black text-slate-900 dark:text-white">
+              {allStudents.length}
+            </p>
+            <p className="text-[11px] text-slate-400 mt-1">Santri terdaftar di sistem</p>
+          </div>
+
+          <div className="bg-white dark:bg-[#0f172a] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Poin Pelanggaran</span>
+              <div className="p-2 bg-rose-50 dark:bg-rose-950/50 rounded-xl text-rose-600 dark:text-rose-400">
+                <ShieldAlert className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="mt-3 text-2xl font-black text-rose-600">
+              {stats?.summary?.totalPoints || 0}
+            </p>
+            <p className="text-[11px] text-slate-400 mt-1">{stats?.summary?.totalRecords || 0} kasus tercatat</p>
+          </div>
+
+          <div className="bg-white dark:bg-[#0f172a] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Apresiasi Kebaikan</span>
+              <div className="p-2 bg-emerald-50 dark:bg-emerald-950/50 rounded-xl text-emerald-600 dark:text-emerald-400">
+                <Award className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="mt-3 text-2xl font-black text-emerald-600">
+              {stats?.summary?.totalPointsDeducted || 0} pts
+            </p>
+            <p className="text-[11px] text-slate-400 mt-1">{stats?.summary?.totalPositiveRecords || 0} kebaikan tercatat</p>
+          </div>
+
+          <div className="bg-white dark:bg-[#0f172a] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Perlu Pembinaan</span>
+              <div className="p-2 bg-amber-50 dark:bg-amber-950/50 rounded-xl text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="mt-3 text-2xl font-black text-amber-600">
+              {stats?.studentsNeedingAttention?.length || 0}
+            </p>
+            <p className="text-[11px] text-slate-400 mt-1">Santri butuh perhatian khusus</p>
+          </div>
+        </div>
+
+        {/* Monitoring Daftar Santri Sekolah */}
+        <div className="bg-white dark:bg-[#0f172a] p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-soft">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+            <div>
+              <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <GraduationCap className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+                <span>Monitoring Kedisiplinan Seluruh Santri</span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Cari santri berdasarkan nama, NIS, atau kelas untuk melihat rekapitulasi poin kedisiplinan.
+              </p>
+            </div>
+
+            {/* Filters */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="relative min-w-[200px]">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Cari santri / NIS..."
+                  value={guruStudentSearch}
+                  onChange={(e) => setGuruStudentSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+
+              <select
+                value={guruClassFilter}
+                onChange={(e) => setGuruClassFilter(e.target.value)}
+                className="px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="all">Semua Kelas</option>
+                {uniqueClasses.map((cls) => (
+                  <option key={cls} value={cls}>Kelas {cls}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* List Santri */}
+          <div className="mt-4 divide-y divide-slate-100 dark:divide-slate-800 max-h-[500px] overflow-y-auto">
+            {filteredGuruStudents.slice(0, 30).map((st) => (
+              <div
+                key={st.id}
+                onClick={() => handleStudentClick(st.id)}
+                className="py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 px-3 rounded-2xl cursor-pointer transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 font-bold text-xs flex items-center justify-center border border-teal-200 dark:border-teal-800">
+                    {st.name.charAt(0)}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">{st.name}</p>
+                    <p className="text-xs text-slate-400">NIS: {st.student_number} • Kelas {st.class}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  {(st.total_deductions || 0) > 0 && (
+                    <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100 dark:bg-emerald-950/80 dark:text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
+                      -{st.total_deductions} pts
+                    </span>
+                  )}
+                  <span className="text-sm font-black text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-2.5 py-1 rounded-lg border border-rose-100 dark:border-rose-900">
+                    {st.total_points || 0} Poin
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-slate-400" />
+                </div>
+              </div>
+            ))}
+
+            {filteredGuruStudents.length === 0 && (
+              <div className="py-12 text-center text-slate-400 text-xs sm:text-sm">
+                Tidak ada data santri yang cocok dengan pencarian.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
   // VIEW: DASHBOARD MUHAFAZH (MOBILE-FIRST)
   // ==========================================
-  if (isTeacher) {
+  if (isMuhafizh) {
     const halaqahPrimary = teacherHalaqahs[0];
     const topStudentsInHalaqah = [...teacherStudents].sort(
       (a, b) => (b.total_points || 0) - (a.total_points || 0)
@@ -167,7 +376,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <button
                 type="button"
                 onClick={onOpenQuickRecord}
-                className="w-full sm:w-auto px-5 sm:px-7 py-3.5 sm:py-4 bg-gradient-to-r from-brand-500 to-blue-600 hover:from-brand-600 hover:to-blue-700 text-white text-sm sm:text-lg font-black rounded-2xl shadow-xl shadow-brand-500/30 transition-all flex items-center justify-center gap-2.5 sm:gap-3 transform active:scale-95 group min-h-[48px]"
+                className="w-full sm:w-auto px-5 sm:px-7 py-3.5 sm:py-4 bg-gradient-to-r from-brand-500 to-blue-600 hover:from-brand-600 hover:to-blue-700 text-white text-sm sm:text-lg font-black rounded-2xl shadow-xl shadow-brand-500/30 transition-all flex items-center justify-center gap-2.5 sm:gap-3 transform active:scale-95 group min-h-[48px] cursor-pointer"
               >
                 <PlusCircle className="w-5 h-5 sm:w-6 sm:h-6 text-brand-200 group-hover:rotate-90 transition-transform duration-300 shrink-0" />
                 <span>+ CATAT PELANGGARAN SANTRI</span>
@@ -177,7 +386,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <button
                   type="button"
                   onClick={onOpenQuickReward}
-                  className="w-full sm:w-auto px-5 sm:px-7 py-3.5 sm:py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm sm:text-lg font-black rounded-2xl shadow-xl shadow-emerald-600/30 transition-all flex items-center justify-center gap-2.5 sm:gap-3 transform active:scale-95 group min-h-[48px]"
+                  className="w-full sm:w-auto px-5 sm:px-7 py-3.5 sm:py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm sm:text-lg font-black rounded-2xl shadow-xl shadow-emerald-600/30 transition-all flex items-center justify-center gap-2.5 sm:gap-3 transform active:scale-95 group min-h-[48px] cursor-pointer"
                 >
                   <Award className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-200 group-hover:scale-110 transition-transform duration-200 shrink-0" />
                   <span>★ CATAT KEBAIKAN SANTRI</span>
@@ -188,14 +397,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* Status Halaqah Aktif */}
-        {halaqahPrimary && (
-          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-soft">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+        {halaqahPrimary ? (
+          <div className="bg-white dark:bg-[#0f172a] p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-soft">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-brand-600">
                   Halaqah yang Diampu
                 </span>
-                <h2 className="text-xl font-black text-slate-900 mt-0.5">
+                <h2 className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
                   {halaqahPrimary.name}
                 </h2>
                 <div className="flex flex-wrap items-center gap-4 mt-2 text-xs text-slate-500">
@@ -207,7 +416,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <MapPin className="w-3.5 h-3.5 text-slate-400" />
                     {halaqahPrimary.location || 'Masjid Utama'}
                   </span>
-                  <span className="flex items-center gap-1.5 font-semibold text-slate-700">
+                  <span className="flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-300">
                     <GraduationCap className="w-3.5 h-3.5 text-brand-600" />
                     {teacherStudents.length} Santri Bimbingan
                   </span>
@@ -216,7 +425,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* List Santri di Halaqah */}
-            <div className="mt-4 divide-y divide-slate-100">
+            <div className="mt-4 divide-y divide-slate-100 dark:divide-slate-800">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
                 Daftar Santri & Akumulasi Poin
               </h3>
@@ -224,14 +433,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div
                   key={st.id}
                   onClick={() => handleStudentClick(st.id)}
-                  className="py-3 flex items-center justify-between hover:bg-slate-50 px-2 rounded-xl cursor-pointer transition-colors"
+                  className="py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 px-2 rounded-xl cursor-pointer transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-slate-100 font-bold text-xs flex items-center justify-center text-slate-600">
+                    <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 font-bold text-xs flex items-center justify-center text-slate-600 dark:text-slate-300">
                       {st.name.charAt(0)}
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-slate-900">{st.name}</p>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">{st.name}</p>
                       <p className="text-xs text-slate-400">NIS: {st.student_number} • Kelas {st.class}</p>
                     </div>
                   </div>
@@ -255,6 +464,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               )}
             </div>
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-[#0f172a] p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-soft text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto border border-amber-200 dark:border-amber-800">
+              <BookOpen className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              Belum Ada Halaqah yang Diampu
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+              Akun Anda terdaftar sebagai Muhafizh Halaqah, namun saat ini belum ada halaqah bimbingan aktif yang ditugaskan kepada Anda. Silakan hubungi Koordinator Tahfizh atau Admin untuk pengaturan penugasan halaqah.
+            </p>
           </div>
         )}
       </div>

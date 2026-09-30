@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL CHECK(role IN ('admin', 'coordinator', 'kepala_kesantrian', 'teacher', 'guru')),
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
+  must_change_password INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -447,10 +448,11 @@ function runMigrations(database) {
           password_hash TEXT NOT NULL,
           role TEXT NOT NULL CHECK(role IN ('admin', 'coordinator', 'kepala_kesantrian', 'teacher', 'guru')),
           status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
+          must_change_password INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      database.run("INSERT INTO users_new SELECT * FROM users;");
+      database.run("INSERT INTO users_new (id, name, email, password_hash, role, status, created_at) SELECT id, name, email, password_hash, role, status, created_at FROM users;");
       database.run("DROP TABLE users;");
       database.run("ALTER TABLE users_new RENAME TO users;");
       database.run("PRAGMA foreign_keys=ON;");
@@ -458,6 +460,15 @@ function runMigrations(database) {
     }
   } catch (e) {
     console.error("Peringatan migrasi skema tabel users:", e?.message || e);
+  }
+  try {
+    database.run("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0;");
+  } catch (e) {
+  }
+  try {
+    database.run("UPDATE halaqah SET teacher_id = NULL WHERE teacher_id IN (SELECT t.id FROM teachers t JOIN users u ON u.id = t.user_id WHERE u.role = 'guru');");
+    database.run("DELETE FROM teachers WHERE user_id IN (SELECT id FROM users WHERE role = 'guru');");
+  } catch (e) {
   }
   try {
     database.run(`
@@ -840,13 +851,6 @@ function seedNewRolesIfEmpty() {
       `INSERT INTO users (id, name, email, password_hash, role, status, created_at)
        VALUES ('usr_guru', 'Ustadz Herman, S.Pd (Guru Pengajar)', 'guru@pesantren.id', 'guru123', 'guru', 'active', datetime('now', 'localtime'))`
     );
-    const existingTch = query("SELECT id FROM teachers WHERE user_id = 'usr_guru'")[0];
-    if (!existingTch) {
-      run(
-        `INSERT INTO teachers (id, user_id, name, phone, status)
-         VALUES ('tch_herman', 'usr_guru', 'Ustadz Herman, S.Pd', '0812-3456-7804', 'active')`
-      );
-    }
     console.log("Seeded demo user: Guru (guru@pesantren.id / guru123)");
   }
 }
@@ -1195,7 +1199,7 @@ router.post("/login", (req, res) => {
     }
     let teacherInfo = null;
     let assignedHalaqahs = [];
-    if (user.role === "teacher" || user.role === "guru") {
+    if (user.role === "teacher") {
       teacherInfo = get("SELECT * FROM teachers WHERE user_id = ?", [user.id]);
       if (!teacherInfo) {
         teacherInfo = get("SELECT * FROM teachers WHERE name LIKE ?", [`%${user.name}%`]);
@@ -1219,6 +1223,8 @@ router.post("/login", (req, res) => {
       role: user.role,
       teacherId: teacherInfo?.id || null,
       assignedHalaqahs,
+      mustChangePassword: !!user.must_change_password,
+      must_change_password: user.must_change_password || 0,
       token: "sess_" + Buffer.from(`${user.id}:${Date.now()}`).toString("base64")
     };
     return res.json({
@@ -1241,7 +1247,7 @@ router.post("/change-password", async (req, res) => {
     if (oldPassword && user.password_hash !== oldPassword) {
       return res.status(400).json({ error: "Password lama tidak cocok" });
     }
-    run("UPDATE users SET password_hash = ? WHERE id = ?", [newPassword, userId]);
+    run("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?", [newPassword, userId]);
     logAudit({
       userId,
       userName: actorName || user.name,
@@ -1263,7 +1269,8 @@ var router2 = Router2();
 router2.get("/", (req, res) => {
   try {
     const users = query(`
-      SELECT u.id, u.name, u.email, u.role, u.status, u.created_at,
+      SELECT u.id, u.name, u.email, u.password_hash as password, u.must_change_password,
+             u.role, u.status, u.created_at,
              t.id as teacher_id, t.phone as teacher_phone
       FROM users u
       LEFT JOIN teachers t ON t.user_id = u.id
@@ -1287,11 +1294,11 @@ router2.post("/", async (req, res) => {
     }
     const userId = "usr_" + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
     run(
-      `INSERT INTO users (id, name, email, password_hash, role, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+      `INSERT INTO users (id, name, email, password_hash, role, status, must_change_password, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now', 'localtime'))`,
       [userId, name.trim(), cleanEmail, password, role, status]
     );
-    if (role === "teacher" || role === "guru") {
+    if (role === "teacher") {
       const teacherId = "tch_" + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
       run(
         `INSERT INTO teachers (id, user_id, name, phone, status)
@@ -1314,6 +1321,8 @@ router2.post("/", async (req, res) => {
         id: userId,
         name: name.trim(),
         email: cleanEmail,
+        password,
+        must_change_password: 1,
         role,
         status,
         created_at: (/* @__PURE__ */ new Date()).toISOString()
@@ -1326,7 +1335,7 @@ router2.post("/", async (req, res) => {
 router2.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, password, role, status, phone, actorName = "Admin" } = req.body;
+    const { name, email, password, role, status, phone, must_change_password, actorName = "Admin" } = req.body;
     const oldUser = get("SELECT * FROM users WHERE id = ?", [id]);
     if (!oldUser) return res.status(404).json({ error: "Pengguna tidak ditemukan" });
     const cleanEmail = email ? email.trim().toLowerCase() : oldUser.email;
@@ -1334,17 +1343,24 @@ router2.put("/:id", async (req, res) => {
       const conflict = get("SELECT id FROM users WHERE LOWER(email) = ? AND id != ?", [cleanEmail, id]);
       if (conflict) return res.status(400).json({ error: "Email / Username sudah digunakan pengguna lain" });
     }
-    const updatedPass = password ? password : oldUser.password_hash;
+    const updatedPass = password !== void 0 && password !== "" ? password : oldUser.password_hash;
     const updatedRole = role || oldUser.role;
     const updatedStatus = status || oldUser.status;
     const updatedName = name ? name.trim() : oldUser.name;
+    const updatedMustChange = must_change_password !== void 0 ? must_change_password ? 1 : 0 : oldUser.must_change_password || 0;
     run(
       `UPDATE users
-       SET name = ?, email = ?, password_hash = ?, role = ?, status = ?
+       SET name = ?, email = ?, password_hash = ?, role = ?, status = ?, must_change_password = ?
        WHERE id = ?`,
-      [updatedName, cleanEmail, updatedPass, updatedRole, updatedStatus, id]
+      [updatedName, cleanEmail, updatedPass, updatedRole, updatedStatus, updatedMustChange, id]
     );
-    if (updatedRole === "teacher" || updatedRole === "guru") {
+    if (updatedRole === "guru") {
+      const existingTeacher = get("SELECT id FROM teachers WHERE user_id = ?", [id]);
+      if (existingTeacher) {
+        run("UPDATE halaqah SET teacher_id = NULL WHERE teacher_id = ?", [existingTeacher.id]);
+        run("DELETE FROM teachers WHERE id = ?", [existingTeacher.id]);
+      }
+    } else if (updatedRole === "teacher") {
       const existingTeacher = get("SELECT id FROM teachers WHERE user_id = ?", [id]);
       if (existingTeacher) {
         run("UPDATE teachers SET name = ?, phone = ? WHERE id = ?", [updatedName, phone || "", existingTeacher.id]);
@@ -1368,6 +1384,8 @@ router2.put("/:id", async (req, res) => {
         id,
         name: updatedName,
         email: cleanEmail,
+        password: updatedPass,
+        must_change_password: updatedMustChange,
         role: updatedRole,
         status: updatedStatus,
         created_at: oldUser.created_at
@@ -1421,6 +1439,7 @@ router3.get("/", (req, res) => {
              u.email, u.role
       FROM teachers t
       LEFT JOIN users u ON u.id = t.user_id
+      WHERE (u.role IS NULL OR u.role != 'guru')
       ORDER BY t.name ASC
     `);
     const halaqahs = query('SELECT * FROM halaqah WHERE status = "active"');

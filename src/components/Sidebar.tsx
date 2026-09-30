@@ -145,7 +145,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           id: 'halaqah',
           label: 'Data Halaqah',
           icon: Users,
-          roles: ['admin', 'coordinator', 'kepala_kesantrian', 'teacher', 'guru'],
+          roles: ['admin', 'coordinator', 'kepala_kesantrian', 'teacher'],
         },
         {
           id: 'teachers',

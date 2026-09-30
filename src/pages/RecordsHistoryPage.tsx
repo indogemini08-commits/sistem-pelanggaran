@@ -103,9 +103,9 @@ export const RecordsHistoryPage: React.FC<RecordsHistoryPageProps> = ({
         api.teachers.list(),
       ]);
 
-      // If teacher or guru role, filter Tahfizh records to their halaqah
+      // If teacher (muhafizh) role, filter Tahfizh records to their halaqah
       let filteredByRole = recList;
-      if (currentUser?.role === 'teacher' || currentUser?.role === 'guru') {
+      if (currentUser?.role === 'teacher') {
         const myHalaqahIds = new Set(
           hList.filter((h) => h.teacher_id === currentUser.teacherId).map((h) => h.id)
         );

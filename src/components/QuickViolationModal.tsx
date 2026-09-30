@@ -102,7 +102,7 @@ export const QuickViolationModal: React.FC<QuickViolationModalProps> = ({
       ]);
 
       let accessibleHalaqahs = allHalaqahs;
-      if (currentUser?.role === 'teacher' || currentUser?.role === 'guru') {
+      if (currentUser?.role === 'teacher') {
         const teacherId = currentUser.teacherId;
         if (teacherId) {
           accessibleHalaqahs = allHalaqahs.filter((h) => h.teacher_id === teacherId);

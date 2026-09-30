@@ -16,10 +16,10 @@ router.post('/login', (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Email / Username atau kata sandi tidak sesuai' });
     }
 
-    // If teacher, fetch teacher info & assigned halaqahs
+    // If teacher (muhafizh), fetch teacher info & assigned halaqahs (Guru does not hold halaqahs)
     let teacherInfo = null;
     let assignedHalaqahs: any[] = [];
-    if (user.role === 'teacher' || user.role === 'guru') {
+    if (user.role === 'teacher') {
       teacherInfo = get<any>('SELECT * FROM teachers WHERE user_id = ?', [user.id]);
       if (!teacherInfo) {
         // Find teacher by name or email match
@@ -46,6 +46,8 @@ router.post('/login', (req: Request, res: Response) => {
       role: user.role,
       teacherId: teacherInfo?.id || null,
       assignedHalaqahs: assignedHalaqahs,
+      mustChangePassword: !!user.must_change_password,
+      must_change_password: user.must_change_password || 0,
       token: 'sess_' + Buffer.from(`${user.id}:${Date.now()}`).toString('base64'),
     };
 
@@ -73,7 +75,7 @@ router.post('/change-password', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Password lama tidak cocok' });
     }
 
-    run('UPDATE users SET password_hash = ? WHERE id = ?', [newPassword, userId]);
+    run('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?', [newPassword, userId]);
 
     logAudit({
       userId: userId,

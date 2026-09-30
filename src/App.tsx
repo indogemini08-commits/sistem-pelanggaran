@@ -20,6 +20,7 @@ import { UserManagementPage } from './pages/UserManagementPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AuditLogPage } from './pages/AuditLogPage';
 import { ParentPortalPage } from './pages/ParentPortalPage';
+import { FirstTimePasswordModal } from './components/FirstTimePasswordModal';
 
 export function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -139,6 +140,20 @@ export function App() {
         onLoginSuccess={handleLoginSuccess}
         settings={settings}
         onOpenParentPortal={() => setShowParentPortal(true)}
+      />
+    );
+  }
+
+  // Mandatory first-time password change screen for newly created accounts
+  if (currentUser && Boolean(currentUser.mustChangePassword || currentUser.must_change_password)) {
+    return (
+      <FirstTimePasswordModal
+        currentUser={currentUser}
+        settings={settings}
+        onPasswordChanged={(updatedUser) => {
+          handleUserUpdated(updatedUser);
+        }}
+        onLogout={handleLogout}
       />
     );
   }
